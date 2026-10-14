@@ -1,0 +1,11 @@
+﻿# Imágenes de juegos / ROMs (pesadas para GitHub)
+*.iso
+*.bin
+*.cue
+*.img
+*.chd
+*.cso
+*.zip
+*.7z
+*.rar
+
