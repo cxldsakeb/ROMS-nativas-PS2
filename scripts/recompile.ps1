@@ -4,7 +4,8 @@
 
 .DESCRIPTION
     1. Normaliza las rutas del TOML a rutas relativas al repo (el export de Ghidra las escribe absolutas).
-    2. Ejecuta ps2_recomp -> generated/
+    2. Mezcla config/gow.toml (export de Ghidra) + config/gow.manual.toml -> out/gow.effective.toml
+       y ejecuta ps2_recomp con él -> generated/
     3. Copia generated/*.cpp + overrides/*.cpp a PS2Recomp/ps2xRuntime/src/runner/
        y generated/*.h a PS2Recomp/ps2xRuntime/include/
 
@@ -33,11 +34,34 @@ if (-not $SyncOnly) {
     $toml = $toml -replace '(?m)^ghidra_output\s*=.*$', "ghidra_output = `"$csvValue`""
     Write-Utf8NoBom $ConfigToml $toml
 
+    # Mezclar los añadidos manuales (config/gow.manual.toml) con el export de Ghidra,
+    # así un nuevo export no borra nada. Resultado: out/gow.effective.toml
+    $effective = $toml
+    if (Test-Path $ManualToml) {
+        $manual = [IO.File]::ReadAllText($ManualToml)
+        foreach ($pair in @(@('extra_stubs', 'stubs'), @('extra_entry_points', 'entry_points'))) {
+            $extraKey, $key = $pair
+            if ($manual -match "(?ms)^$extraKey\s*=\s*\[(.*?)^\]") {
+                $manual = $manual.Replace($Matches[0], '')
+                $entries = $Matches[1].Replace('$', '$$')   # '$' es especial en el reemplazo de -replace
+                if ($effective -match "(?m)^$key\s*=\s*\[") {
+                    $effective = $effective -replace "(?m)^$key\s*=\s*\[", "$key = [`n$entries"
+                }
+                else {
+                    $effective = $effective -replace '(?m)^\[general\][ \t]*\r?$', "[general]`n$key = [`n$entries]"
+                }
+            }
+        }
+        $effective = $effective.TrimEnd() + "`n`n# ---- Añadidos de config/gow.manual.toml ----`n" + $manual
+    }
+    New-Item -ItemType Directory -Force (Split-Path $EffectiveToml) | Out-Null
+    Write-Utf8NoBom $EffectiveToml $effective
+
     if (Test-Path $GeneratedDir) { Remove-Item $GeneratedDir -Recurse -Force }
     New-Item -ItemType Directory -Force $GeneratedDir | Out-Null
 
     Push-Location $RepoRoot
-    try { Invoke-Native $recomp @($ConfigToml) }
+    try { Invoke-Native $recomp @($EffectiveToml) }
     finally { Pop-Location }
 }
 
@@ -61,4 +85,11 @@ foreach ($file in $sources) {
 Set-Content -Path $SyncManifest -Value $copied -Encoding utf8
 
 Write-Host "Copiados $($copied.Count) archivos al runner de PS2Recomp."
+
+# Reconfigurar CMake para que el proyecto del runner incluya los archivos nuevos. Si se deja
+# a la regeneración automática durante el build, MSBuild compila con el proyecto viejo y
+# el enlazado falla con miles de LNK2019.
+if (Test-Path (Join-Path $BuildDir 'CMakeCache.txt')) {
+    Invoke-Native (Get-CMake) @('-S', $RecompDir, '-B', $BuildDir) | Out-Null
+}
 Write-Host 'Siguiente paso: .\scripts\run.ps1'

@@ -16,6 +16,7 @@ game/
     SCUS_973.99    ← ELF principal (el nombre depende de la región)
     ...
   elf-name.txt     ← nombre del ELF detectado (lo leen los scripts)
+  iso-path.txt     ← ruta a tu ISO (el runtime la lee para las lecturas por sector)
 ```
 
 **Nunca** subas nada de aquí al repo ni lo compartas por Discord u otros sitios. Cada uno usa su propia copia del juego.

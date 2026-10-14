@@ -36,6 +36,7 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 - Copia el DVD entero a `game/disc/` (unos 4–8 GB) y detecta el ELF principal (en la versión USA es `SCUS_973.99`).
 - Al final imprime el **SHA1 del ELF**. Compáralo con el de [NOTES.md](NOTES.md). Si no coincide, tienes otra región o revisión y las direcciones del proyecto **no te van a servir**.
 - Solo funciona con `.iso`. Si tu copia es `.bin/.cue` u otro formato, conviértela antes a ISO.
+- **No muevas ni borres la ISO después.** God of War lee sectores del DVD en crudo y es de doble capa, así que el runtime necesita la ISO completa. Su ruta se guarda en `game/iso-path.txt`; si la mueves, vuelve a ejecutar el script.
 
 ## 5. Compilar las herramientas de PS2Recomp
 
@@ -52,16 +53,17 @@ Basta con que lo instale **una persona** (quien se encargue del análisis), aunq
 1. **Java 21**: `winget install EclipseAdoptium.Temurin.21.JDK`
 2. **Ghidra 12.1.4**: descárgalo de https://github.com/NationalSecurityAgency/ghidra/releases y descomprímelo (por ejemplo en `C:\ghidra`).
 3. **Extensión Emotion Engine** (el procesador de PS2, con soporte de MMI/VU0, que el MIPS normal de Ghidra no decodifica bien): descarga de https://github.com/chaoticgd/ghidra-emotionengine-reloaded/releases el zip **de tu versión exacta de Ghidra** (`ghidra_12.1.4_PUBLIC_..._ghidra-emotionengine-reloaded.zip`). En Ghidra: *File → Install Extensions → +*, elige el zip y reinicia Ghidra.
-4. Crea un proyecto de Ghidra **fuera del repo** (o en `ghidra/`, que está ignorada) e importa `game/disc/SCUS_973.99`. Al importar, comprueba que el formato sea ELF y el lenguaje el de la extensión (*r5900*). Acepta el análisis automático; tarda un rato.
-5. Exporta la config para el recompilador: *Window → Script Manager → Manage Script Directories* → añade `PS2Recomp/ps2xRecomp/tools/ghidra`, busca `ExportPS2Functions` y ejecútalo.
-   - Cuando pida el TOML, guárdalo como `config/gow.toml`.
-   - Cuando pida el CSV, guárdalo como `config/gow_functions.csv`.
+   La forma rápida: descomprime el zip directamente en `C:\ghidra\ghidra_12.1.4_PUBLIC\Ghidra\Extensions\`.
+4. Analiza el ELF y exporta la config **sin abrir la interfaz** (tarda alrededor de 1 minuto):
 
-**Atajo para probar el pipeline sin Ghidra** (peores límites de función, solo para el primer día):
+   ```powershell
+   .\scripts\ghidra-analyze.ps1          # Ghidra en otra carpeta: -GhidraDir "ruta" o $env:GHIDRA_INSTALL_DIR
+   ```
 
-```powershell
-.\out\build\ps2xAnalyzer\Release\ps2_analyzer.exe game\disc\SCUS_973.99 config\gow.toml
-```
+   El script crea el proyecto en `ghidra/` (ignorado por Git) y escribe `config/gow.toml` + `config/gow_functions.csv`. Si el proyecto ya existe, solo vuelve a exportar; `-Reanalyze` empieza de cero.
+5. Para investigar funciones con el descompilador, abre la interfaz (`C:\ghidra\ghidra_12.1.4_PUBLIC\ghidraRun.bat`) y en ella el proyecto `ghidra/GodOfWar.gpr`. Si corriges límites de función, vuelve a ejecutar `ghidra-analyze.ps1` (con Ghidra cerrado) para reexportar.
+
+Los cambios manuales a la config **no** se hacen en `gow.toml`, sino en `config/gow.manual.toml` (ver [config/README.md](../config/README.md)).
 
 ## 7. Recompilar y arrancar
 

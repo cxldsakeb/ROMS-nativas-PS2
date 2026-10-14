@@ -16,8 +16,44 @@
 #include "ps2_stubs.h"
 #include "ps2_syscalls.h"
 
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <string>
+
 namespace
 {
+    // God of War lee casi todo por número de sector (LBN) usando GODOFWAR.TOC, y el DVD es de
+    // doble capa: la carpeta game/disc/ solo tiene la capa 0. Por eso el runtime necesita la ISO
+    // completa como imagen de CD. extract-iso.ps1 guarda su ruta en game/iso-path.txt.
+    void configureCdImage()
+    {
+        PS2Runtime::IoPaths paths = PS2Runtime::getIoPaths();
+        const std::filesystem::path pathFile = paths.elfDirectory.parent_path() / "iso-path.txt";
+
+        std::ifstream in(pathFile);
+        std::string isoPath;
+        if (!in || !std::getline(in, isoPath) || isoPath.empty())
+        {
+            std::cerr << "[gow] Falta " << pathFile.string()
+                      << ": las lecturas por sector fallarán. Vuelve a ejecutar extract-iso.ps1" << std::endl;
+            return;
+        }
+        if (!isoPath.empty() && isoPath.back() == '\r')
+        {
+            isoPath.pop_back();
+        }
+        if (!std::filesystem::exists(isoPath))
+        {
+            std::cerr << "[gow] No existe la ISO indicada en iso-path.txt: " << isoPath << std::endl;
+            return;
+        }
+
+        paths.cdImage = isoPath;
+        PS2Runtime::setIoPaths(paths);
+        std::cout << "[gow] Imagen de CD: " << isoPath << std::endl;
+    }
+
     // Llama a un handler del runtime y, si no movió el PC, vuelve a $ra
     // (evita bucles infinitos re-despachando la misma dirección).
     template <typename Handler>
@@ -37,7 +73,7 @@ namespace
 
     void applyGodOfWarOverrides(PS2Runtime &runtime)
     {
-        (void)runtime;
+        configureCdImage();
 
         // Ejemplos (descomentar y ajustar cuando conozcamos las direcciones reales):
         //
@@ -46,11 +82,10 @@ namespace
     }
 }
 
-// entry = 0 y crc32 = 0 significan "cualquiera": el override aplica a cualquier ELF con ese nombre.
-// Cuando tengamos el ELF de referencia, rellenar el entry point y el CRC32 para no aplicarlo a otra región.
+// Solo se aplica al ELF de referencia (SCUS-97399 v1.00, ver docs/NOTES.md).
 PS2_REGISTER_GAME_OVERRIDE(
-    "god-of-war",
+    "god-of-war-scus97399",
     "SCUS_973.99",
-    0u,
-    0u,
+    0x00100008u,
+    0x822956F8u,
     applyGodOfWarOverrides);

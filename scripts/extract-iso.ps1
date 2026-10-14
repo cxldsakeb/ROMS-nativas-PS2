@@ -39,6 +39,9 @@ finally {
 Get-ChildItem $DiscDir -Recurse -File | ForEach-Object { $_.IsReadOnly = $false }
 
 Set-Content -Path $ElfNameFile -Value $elfName -Encoding ascii
+# God of War lee por sector y el DVD es de doble capa (Windows solo monta la capa 0):
+# el runtime necesita la ISO completa, y el override la busca aquí.
+Write-Utf8NoBom $IsoPathFile $iso
 $elfPath = Join-Path $DiscDir $elfName
 $sha1 = (Get-FileHash $elfPath -Algorithm SHA1).Hash
 

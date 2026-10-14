@@ -34,3 +34,7 @@ ghidra/
 !.vscode/extensions.json
 Thumbs.db
 desktop.ini
+
+# Archivos que crea el runner al ejecutarse desde la raíz
+imgui.ini
+ps2_log.txt

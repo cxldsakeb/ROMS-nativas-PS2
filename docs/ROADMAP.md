@@ -20,15 +20,15 @@ Cada fase tiene un **criterio de "hecho"** comprobable. No hay que pasar a la si
 
 ### Fase 1: Análisis en Ghidra
 
-- [ ] Proyecto de Ghidra con la extensión Emotion Engine y el análisis automático terminado.
-- [ ] Exportar `config/gow.toml` y `config/gow_functions.csv` y subirlos.
+- [x] Proyecto de Ghidra con la extensión Emotion Engine y el análisis automático terminado.
+- [x] Exportar `config/gow.toml` y `config/gow_functions.csv` y subirlos.
 - [ ] Revisar cuántas funciones quedan como `untracked_stubs` (funciones de librería sin handler en el runtime).
 
 **Hecho cuando:** `recompile.ps1` genera C++ sin errores.
 
 ### Fase 2: Que el código generado compile
 
-- [ ] `run.ps1` compila `ps2EntryRunner` con todo el código generado.
+- [x] `run.ps1` compila `ps2EntryRunner` con todo el código generado.
 - [ ] Apuntar en NOTES.md los errores del recompilador o del compilador que haga falta arreglar en PS2Recomp.
 
 **Hecho cuando:** existe `ps2EntryRunner.exe` con las funciones de God of War registradas.
