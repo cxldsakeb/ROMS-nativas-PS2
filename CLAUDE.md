@@ -45,12 +45,16 @@ scripts/run.ps1 [-Config] [-NoBuild]     compila ps2EntryRunner y arranca; log e
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
 
-- **Fase:** 3, primer arranque, a punto de pasar a la 4 (IOP, módulos y archivos). Ver `docs/ROADMAP.md`.
-- **Última sesión (2026-10-14, DaniSBR1):** **resuelto el bucle de `FUN_0013dc78`.** Era el malloc del juego recorriendo una lista de libres corrupta: el stub HLE de `sceGsResetGraph` reservaba memoria con `guestMalloc` justo encima de la cabecera del heap "Root" del juego (ambos empiezan en `0x35C1B0`). Arreglado con `overrides/gow_memory.cpp` (TEMPORAL), que reserva 1 MB del final de "Root" para el runtime. Ahora el juego sube una textura, dibuja un sprite y presenta frames, y **se queda en un bucle de espera en `0x27A768`** (`FUN_0027a6b8`), que reintenta `0x297290(…, 0x80000593, 0)`: parece `sceSifBindRpc` al servidor de CD/DVD del IOP. Detalles en `docs/NOTES.md`.
-- **SIGUIENTE PASO CONCRETO:** averiguar qué servidor RPC espera el juego y dárselo.
-  1. Confirmar en Ghidra que `0x297290` es `sceSifBindRpc` y qué función de `libcdvd` es `FUN_0027a6b8` (¿`sceCdSearchFile`?).
-  2. Buscar en `PS2Recomp/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp`, `RPC.cpp`/`SIF.cpp` y en `ps2xIOP` si existe el servidor `0x80000593`.
-  3. Si no existe, valorar enlazar las funciones `sceCd*` del juego a los stubs de `CD.cpp` en `config/gow.manual.toml` (como ya se hace con `sceGs*`/`sceMpeg*`) o implementar el servidor.
+- **Fase:** 4 (IOP, módulos y archivos). La fase 3 se considera hecha: el juego pasa toda su inicialización de EE e IOP hasta la primera RPC de sonido. Ver `docs/ROADMAP.md`.
+- **Última sesión (2026-10-14, cxldsakeb):** resueltos dos bloqueos seguidos.
+  1. **Bucle de `0x27A768`:** era `_CdCheckSCmd` de libcdvd esperando el servidor de CD `0x80000593`, que el runtime no emula. La única función que lo necesitaba era `sceCdReadDvdDualInfo` (`0x27AB00`), sin stub en el runtime: reimplementada en `overrides/gow_cd.cpp` (capa 1 en el sector 2 080 560, detectada en la ISO).
+  2. **El juego no se creía arrancado desde el disco:** el `SetupThread` de PS2Recomp no rellena `argc`/`argv`, así que tomaba la ruta de desarrollo (`IOP_MOD/x.irx`), fallaban 4 IRX y `sceDbcInit` esperaba para siempre. `overrides/gow_boot.cpp` pasa `argv[0] = "cdrom0:\SCUS_973.99;1"` a `main`. **Ahora los 8 IRX se cargan desde el disco en el IOP emulado.**
+  - **Nuevo bloqueo:** `pc=0x26c0e8`, en `FUN_0026bf28`, que espera la respuesta de un `sceSifCallRpc`. Antes, `989NOMID.IRX` (sonido) avisa en el IOP: `"failed to allocate memory, probably going to hang soon!"`. Detalles en `docs/NOTES.md`.
+- **SIGUIENTE PASO CONCRETO:** averiguar qué RPC espera `FUN_0026bf28`.
+  1. Ver a qué cliente/SID va el `sceSifCallRpc` de `0x26C0D4` y qué comprueba `FUN_0026bb98`.
+  2. Ver por qué 989snd no puede reservar memoria en el IOP (`ps2xIOP`, `allocateMemory`/sysmem): ¿tamaño de la RAM del IOP o lo que ocupan los módulos cargados?
+  3. Si es el sonido y no se arregla pronto, valorar un HLE mínimo de su RPC para seguir avanzando (TEMPORAL).
+- **Herramienta útil:** los archivos de `generated/` llevan la dirección en el nombre (`FUN_0027a6b8_0x27a6b8.cpp`) y cada instrucción en un comentario `// 0x…`. Con `grep -E "^\s*// 0x"` se lee el ensamblador sin abrir Ghidra. Buscar en todo `generated/` tarda minutos: filtrad por prefijo de archivo.
 - **Diagnóstico de memoria:** `$env:GOW_HEAP_DEBUG = "1"` antes de `run.ps1` activa `overrides/gow_heap_debug.cpp`, que registra cada `heap_create` y avisa si se rompe la lista de libres de un heap. Cualquier stub del runtime que use `guestMalloc` puede volver a pisar memoria del juego.
 - **Build de referencia:** God of War USA, SCUS-97399 v1.00, ELF `SCUS_973.99`, SHA1 `64B10DB280304115DA4BC2066238D29023DF0A06`. Los datos completos están en `docs/NOTES.md`.
 - **Importante:** el juego lee por sector (LBN) vía `GODOFWAR.TOC` y el DVD es de doble capa. El runtime usa la ISO completa como imagen de CD, configurada en `overrides/gow_overrides.cpp` a partir de `game/iso-path.txt`.
@@ -62,10 +66,12 @@ scripts/run.ps1 [-Config] [-NoBuild]     compila ps2EntryRunner y arranca; log e
   - DaniSBR1 completó SETUP y lo reproduce igual: mismo SHA1, mismo export de Ghidra y misma recompilación (0 errores, 3587 avisos). Runner Debug en unos 20 min con 12 hilos; con `recompile.ps1 -SyncOnly`, si solo cambian los overrides, recompilar y enlazar tarda alrededor de 1 min. Ghidra funciona también con JDK 23 (`$env:JAVA_HOME`).
   - Sistema de memoria del juego identificado (`heap_create`, malloc, free, pila de heaps); ver NOTES.md.
   - Bucle de `FUN_0013dc78` resuelto (`overrides/gow_memory.cpp`).
+  - Bucle de libcdvd en `0x27A768` resuelto (`overrides/gow_cd.cpp`) y arranque "desde disco" con los 8 IRX cargados (`overrides/gow_boot.cpp`).
 - **Pendiente:**
   - Que ErickFRD20 complete SETUP y reproduzca el arranque.
   - Repartir las áreas: análisis, runtime y gráficos.
-  - Bucle de espera RPC en `0x27A768` (siguiente paso de arriba).
+  - Espera de RPC en `0x26C0E8` (siguiente paso de arriba).
+  - Proponer a PS2Recomp que `SetupThread` rellene `argc`/`argv` y añadir `sceCdReadDvdDualInfo` a `CD.cpp` (NOTES.md, "Cambios necesarios en PS2Recomp").
   - Revisar los tres stubs en conflicto (`StartThread`/`iWakeupThread`/`InitTLB`, ver NOTES.md).
   - Proponer a PS2Recomp que `guestMalloc` use una zona propia en lugar de la memoria del juego (NOTES.md, "Cambios necesarios en PS2Recomp").
   - Cambio pendiente de commit en el submódulo: ninguno (todo lo copiado al runner es local y está ignorado).
