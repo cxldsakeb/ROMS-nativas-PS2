@@ -52,9 +52,13 @@ namespace
         return sector[0] == 0x01 && std::memcmp(sector.data() + 1, "CD001", 5) == 0;
     }
 
-    // Mismo criterio que PCSX2 (InputIsoFile::FindLayer1Start): en una ISO de doble capa, la capa 1
-    // empieza justo donde acaba el volumen de la capa 0, y ese sector contiene su propio PVD.
-    // En nuestra ISO: volumen de la capa 0 = 2 080 560 sectores, PVD de la capa 1 en el 2 080 560.
+    // En una ISO de doble capa, el PVD de la capa 1 está en el sector que marca el tamaño del volumen
+    // de la capa 0 (igual que busca PCSX2 en InputIsoFile::FindLayer1Start). Pero la capa 1 es un
+    // volumen ISO 9660 propio con su PVD en SU sector 16, así que empieza 16 sectores antes.
+    // En nuestra ISO: PVD de la capa 1 en el 2 080 560 → capa 1 en el 2 080 544. Se comprueba porque
+    // 2 080 544 + 2 080 976 (volumen de la capa 1) = 4 161 520, el total de la ISO, y porque con esa
+    // base su directorio raíz es coherente (contiene PART2.PAK). SMPD_IOP lee el PVD en
+    // layer1_start + 16: con el 2 080 560 que dábamos antes recorría basura.
     CdDualInfo cdDetectDualInfo()
     {
         CdDualInfo info;
@@ -81,12 +85,21 @@ namespace
         uint32_t layer0Size = 0;
         std::memcpy(&layer0Size, sector.data() + kCdPvdVolumeSizeOffset, sizeof(layer0Size));
 
-        // Como PCSX2: con una sola capa, layer1_start = número de sectores del disco
+        // Con una sola capa, layer1_start = número de sectores del disco (como PCSX2)
         info.layer1Start = static_cast<uint32_t>(totalSectors);
-        if (totalSectors > layer0Size && cdReadSector(iso, layer0Size, sector) && cdIsPrimaryVolumeDescriptor(sector))
+        if (totalSectors > layer0Size && layer0Size > kCdPvdSector &&
+            cdReadSector(iso, layer0Size, sector) && cdIsPrimaryVolumeDescriptor(sector))
         {
             info.onDual = 1;
-            info.layer1Start = layer0Size;
+            info.layer1Start = layer0Size - kCdPvdSector;
+
+            uint32_t layer1Size = 0;
+            std::memcpy(&layer1Size, sector.data() + kCdPvdVolumeSizeOffset, sizeof(layer1Size));
+            if (static_cast<uint64_t>(info.layer1Start) + layer1Size != totalSectors)
+            {
+                std::cerr << "[gow:cd] aviso: capa 1 (" << info.layer1Start << " + " << layer1Size
+                          << ") no cuadra con el total de la ISO (" << totalSectors << ")" << std::endl;
+            }
         }
 
         std::cout << "[gow:cd] DVD " << (info.onDual ? "de doble capa" : "de una capa")

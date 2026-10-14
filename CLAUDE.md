@@ -60,7 +60,17 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
 
-- **Fase:** 4 (IOP, módulos y archivos). El juego pasa toda la inicialización del EE y del IOP, con el sonido incluido, y llega a **cargar su primer recurso del disco (`R_Perm`)**. Ahí falla. Ver `docs/ROADMAP.md`.
+- **Fase:** 4 (IOP, módulos y archivos). El juego pasa toda la inicialización del EE y del IOP, con el sonido incluido, **abre su primer recurso del disco (`R_Perm`) y empieza a leerlo** (unos 1,6 de sus 3,6 MB). Ver `docs/ROADMAP.md`.
+- **Sesión del 2026-10-14 (cxldsakeb, rama `fase4/smpd-r-perm`).** Resuelto el fallo de `R_Perm`; detalles en `docs/NOTES.md`.
+  1. **Causa real:** el `sprintf` de sysclib del IOP emulado copiaba el formato sin sustituir nada, así que SMPD buscaba el archivo `"%s.wad"`. Arreglado **en el fork** (`iop_format.h`: `sprintf`/`vsprintf` con formato). Commit `5dbe580` en la rama local `godofwar-iop-sprintf` del submódulo, **pendiente de subir a `DaniSBR1/PS2Recomp`** (cxldsakeb no tiene permiso de escritura en el fork).
+  2. **Corrección en `overrides/gow_cd.cpp`:** la capa 1 empieza en el sector **2080544**, no en el 2080560 (allí está su PVD, que va en su sector 16). SMPD calcula la base de `PART2.PAK` como `layer1_start + 0x10B`, así que con el valor viejo los 794 recursos de `PART2.PAK` quedaban desplazados.
+  3. Mapa de SMPD_IOP: tabla de comandos, `disc_scan`, `parse_toc`, `find_file`, `OpenResourceFile`… (NOTES.md, "Funciones identificadas").
+- **Bloqueo actual:** SMPD lee `R_PERM.WAD` hasta el sector 2363 y para. En el EE se ve sobre todo el worker de libmc2 (`0x27CBD0`, `pc=0x27CC00`/`0x27CE80`). Hipótesis: el EE dejó de consumir el stream, o el juego reintenta con la tarjeta de memoria (no hay tarjeta en el IOP emulado).
+- **SIGUIENTE PASO CONCRETO:**
+  1. Saber qué hace el hilo principal: `[run:tick]` solo muestra un hilo. Probad una traza local que imprima el PC de todos los hilos, o mirad `0x16B050`, donde estaba justo antes.
+  2. Ver qué comandos recibe el worker de libmc2 (`*0x310384`) y qué devuelven (errores `0x8101xxxx`).
+  3. Comprobar si `MC2_D.IRX`/`SIO2MAN`/`SIO2D` responden en el IOP emulado; si no, valorar un HLE de "no hay tarjeta" o de tarjeta vacía.
+- **Trazas locales que sirvieron (no se suben):** en `iop_cdvd.cpp` (`readSectors`: LSN y primeros bytes) y en `IopEmulator::step` (al pasar por `SMPD base 0x4C900 + offset`: argumentos de `add_file`, `find_file`, `OpenResourceFile`…). Con eso se ve qué hace un IRX sin depurador.
 - **Sesión del 2026-10-14 (DaniSBR1, rama `fase4/rpc-sonido`).** Se resolvieron cuatro bloqueos seguidos; los detalles están en `docs/NOTES.md`, en "Bloqueos" y "Funciones identificadas".
   1. **RPC de sonido (`0x26C0E8`).** El juego envía comandos a 989snd (SID `0x123456`) y espera la respuesta `{0xFFFFFFFF, resultado, 0xFFFFFFFF}` en `0x305600`. Fallaban dos límites del IOP emulado:
      - `SMPD_IOP.IRX` pide 1,1 MB con `AllocSysMemory` y el heap solo tenía 832 KB (el mensaje "failed to allocate memory" era de SMPD, no de 989snd);
@@ -69,25 +79,20 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
   2. **Funciones que Ghidra no ve** (`missing-target` en `0x239A60` y luego en `0x259480`). Se añadieron 621 métodos virtuales (`vfn_`) y 13 destinos de `JAL`/`J` en huecos (`fn_`) a `config/gow.manual.toml`, encontrados con `tools/scan_missing_functions.py`.
   3. **Trampa fatal en `0x185F90`.** `iop_init` carga un IRX que va embebido en el propio ELF (`0x2A3650`) mediante `sceSifLoadModuleBuffer`, que recibe una dirección del IOP, pero el runtime lo buscaba en la memoria del EE. Arreglado en **`overrides/gow_iop.cpp`**, que copia el módulo de la memoria del IOP al EE antes de cargarlo.
   4. **`printf` del IOP con formato** (en el fork). Fue clave para entender SMPD.
-- **Bloqueo actual:** bucle en `0x176A80`–`0x176B00` (`ra=0x1758C0`).
-  - No es un árbol corrupto: es un **puntero nulo**. El backtrace es `main` → `0x17A994` → `0x21CA60` → `0x1BAED0` → `0x1BABE8` (pide `HERO_HEAP_SIZE`, sección `Hero`) → `0x18673C` → `dict_get`, sobre el objeto de configuración global `*0x29CC58`, cuyo diccionario (`+0x4C`) es NULL. Sale de cargar el recurso **`R_Perm`** (`R_PERM.WAD`) con `asset_load` (`0x185F28`).
-  - **Cómo carga archivos God of War:** no usa la libcdvd del EE. Manda "comandos externos" de 989snd (`fno=104`, cabecera `{"SMPD", cmd, tamaño}`) al módulo **SMPD_IOP**, que busca el recurso en `GODOFWAR.TOC` y lee `PART1.PAK` desde el IOP (`cdvdman`).
-  - El comando 1 (init) funciona. El **comando 0xF ("abrir `R_Perm`", flags `0x10000210`) devuelve -1**.
-- **SIGUIENTE PASO CONCRETO:** averiguar por qué falla el `FindResource` de SMPD_IOP.
-  1. `py -3 tools/irx_dis.py game/disc/SMPD_IOP.IRX 0x600 0x900` (y más allá): el código de `+0x6CC` registra o busca las extensiones `.PAK`/`.TOC` en una tabla por nombre. Hay que encontrar el manejador del comando 0xF y de dónde saca el índice. Recuerda: SMPD se carga en la base `0x4C900` del IOP.
-  2. SMPD importa `cdvdman` 6/8/11/13/28/37 (implementados en `iop_cdvd.cpp`) e `ioman` 4/5/6/8 (open/close/read/lseek), que **no están implementados** en `iop_ioman.cpp`. En el log aún no se ven llamadas, pero es sospechoso. Comprobar con una traza local en `iop_cdvd.cpp`/`iop_ioman.cpp` si SMPD intenta leer el TOC.
-  3. Comparar con PCSX2: qué lee SMPD del disco antes de abrir `R_Perm`.
+  5. Con eso se pasó el bucle de `0x176A80` (un puntero nulo porque `R_Perm` no cargaba), que llevó hasta SMPD.
+- **Cómo carga archivos God of War:** no usa la libcdvd del EE. Manda "comandos externos" de 989snd (`fno=104`, cabecera `{"SMPD", cmd, tamaño}`) al módulo **SMPD_IOP** (base `0x4C900` en el IOP), que al iniciar recorre el ISO 9660 de la capa 0, lee `GODOFWAR.TOC` y registra cada recurso con su LBN dentro de `PART1.PAK`/`PART2.PAK`. Comando 1 = Init, `0xF` = abrir recurso.
 - **Build de referencia:** God of War USA, SCUS-97399 v1.00, ELF `SCUS_973.99`, SHA1 `64B10DB280304115DA4BC2066238D29023DF0A06`. Los datos completos están en `docs/NOTES.md`.
 - **Hecho:**
   - Estructura del repo, scripts y docs. `build-tools.ps1` verificado (VS 2022 Build Tools, MSVC 14.44, CMake 3.31).
   - Ghidra + extensión EE; `config/gow.toml` sale de Ghidra.
   - DaniSBR1 reproduce todo igual que cxldsakeb: mismo SHA1, mismo export de Ghidra y misma recompilación.
-  - Heap del juego pisado por `guestMalloc` (`overrides/gow_memory.cpp`), bucle de libcdvd (`gow_cd.cpp`), arranque "desde disco" con los 8 IRX (`gow_boot.cpp`), RPC de sonido (fork), 634 funciones que faltaban (`gow.manual.toml`) e IRX embebido (`gow_iop.cpp`).
+  - Heap del juego pisado por `guestMalloc` (`overrides/gow_memory.cpp`), bucle de libcdvd (`gow_cd.cpp`), arranque "desde disco" con los 8 IRX (`gow_boot.cpp`), RPC de sonido (fork), 634 funciones que faltaban (`gow.manual.toml`), IRX embebido (`gow_iop.cpp`) y `R_Perm` abierto (`sprintf` del IOP en el fork + capa 1 corregida en `gow_cd.cpp`).
   - Fork de PS2Recomp creado y submódulo apuntando a él.
 - **Pendiente:**
-  - `FindResource` de SMPD_IOP para `R_Perm` (siguiente paso de arriba).
+  - **Subir el commit `5dbe580` (sprintf del IOP) a `DaniSBR1/PS2Recomp`, rama `godofwar`, y actualizar el puntero del submódulo.** Hasta entonces, quien no tenga ese commit seguirá sin poder abrir `R_Perm`.
+  - La lectura de `R_PERM.WAD` que se para (siguiente paso de arriba).
   - Que ErickFRD20 complete SETUP y reproduzca el arranque. Ojo: necesita el `git submodule sync`.
   - Repartir las áreas: análisis, runtime y gráficos.
-  - Proponer al PS2Recomp original los arreglos de "Cambios necesarios en PS2Recomp" (NOTES.md): heap y presupuesto del IOP, `printf`, `loadModuleBuffer` desde el IOP, `SetupThread` con `argc`/`argv`, `sceCdReadDvdDualInfo` y `guestMalloc` con zona propia.
+  - Proponer al PS2Recomp original los arreglos de "Cambios necesarios en PS2Recomp" (NOTES.md): heap y presupuesto del IOP, `printf`/`sprintf`, `loadModuleBuffer` desde el IOP, `SetupThread` con `argc`/`argv`, `sceCdReadDvdDualInfo` y `guestMalloc` con zona propia.
   - Revisar los tres stubs en conflicto (`StartThread`/`iWakeupThread`/`InitTLB`, ver NOTES.md).
-  - Cambio pendiente de commit en el submódulo: ninguno. `register_functions.cpp` y los archivos copiados al runner cambian con cada sync y se ignoran (`ignore = dirty`).
+  - Cambio pendiente de subir en el submódulo: el commit `5dbe580` (rama local `godofwar-iop-sprintf` en el PC de cxldsakeb). `register_functions.cpp` y los archivos copiados al runner cambian con cada sync y se ignoran (`ignore = dirty`).
