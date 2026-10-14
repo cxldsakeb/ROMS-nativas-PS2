@@ -27,10 +27,11 @@ La guía completa, con requisitos y Ghidra, está en [docs/SETUP.md](docs/SETUP.
 ## Estructura
 
 ```
-PS2Recomp/      submódulo: recompilador + runtime (upstream: ran-j/PS2Recomp)
+PS2Recomp/      submódulo: recompilador + runtime. Fork DaniSBR1/PS2Recomp, rama godofwar (original: ran-j/PS2Recomp)
 config/         gow.toml + gow_functions.csv (config del recompilador, export de Ghidra)
 overrides/      parches en C++ específicos de God of War (se copian al runner)
-scripts/        extract-iso, build-tools, recompile, run
+scripts/        extract-iso, build-tools, ghidra-analyze, recompile, run
+tools/          scripts de análisis en Python (desensamblar el ELF y los IRX, buscar funciones que Ghidra no ve)
 docs/           SETUP (instalación), ROADMAP (fases y reparto), NOTES (bitácora técnica)
 game/           [local, ignorado] tu copia del disco
 generated/      [local, ignorado] C++ generado por el recompilador
@@ -43,7 +44,7 @@ out/            [local, ignorado] builds y logs
 2. **Todo hallazgo va a [docs/NOTES.md](docs/NOTES.md)**: direcciones identificadas, bloqueos y su solución. Si no está apuntado, se pierde.
 3. **Un problema a la vez:** se arregla el primer bloqueo del log, se vuelve a probar desde cero y se apunta.
 4. **Los parches temporales** (`ret0`/`ret1`) llevan un comentario `TEMPORAL` y una fila en NOTES.md. Hay que convertirlos en implementaciones reales antes de dar una fase por terminada.
-5. **Cambios en PS2Recomp:** no se edita el submódulo a lo loco. Si hace falta tocar el runtime, haremos un fork de PS2Recomp, apuntaremos el submódulo a él y mandaremos al proyecto original los arreglos que sirvan para todos los juegos.
+5. **Cambios en PS2Recomp:** no se edita el submódulo a lo loco. Los arreglos al runtime van a nuestro fork (`DaniSBR1/PS2Recomp`, rama `godofwar`), con un commit propio dentro de `PS2Recomp/`, y luego se actualiza el puntero del submódulo en este repo. Los que sirvan para todos los juegos se proponen al proyecto original.
 
 ## Licencia
 

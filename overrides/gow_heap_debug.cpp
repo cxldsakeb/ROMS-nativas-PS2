@@ -193,6 +193,102 @@ namespace
         }
     }
 
+    // ── Árbol de 0x1769F8 (búsqueda/inserción por clave) ──────────────────────────────────────
+    // Nodos de 16 bytes de un pool fijo (8000 bloques, creado en 0x175D30): +0 clave (u32),
+    // +0xA hijo izquierdo y +0xC hijo derecho como índices u16 desde la base del pool (0x29C4BC).
+    // El nodo "vacío" está en *0x29C4B4. La búsqueda baja hasta encontrar la clave o el nodo vacío.
+    constexpr uint32_t kTreeFindAddr = 0x001769F8u;
+    constexpr uint32_t kTreeNodeAllocAddr = 0x00175D88u;
+    constexpr uint32_t kTreeNilPtr = 0x0029C4B4u;
+    constexpr uint32_t kTreePoolBasePtr = 0x0029C4BCu;
+    constexpr uint32_t kTreeMaxDepth = 100000u;
+
+    PS2Runtime::RecompiledFunction g_originalTreeFind = nullptr;
+    PS2Runtime::RecompiledFunction g_originalTreeNodeAlloc = nullptr;
+    std::atomic<uint32_t> g_treeNodeAllocs{0};
+    std::atomic<bool> g_treeReportedNull{false};
+    std::atomic<bool> g_treeReportedCycle{false};
+
+    // Backtrace heurístico: palabras de la pila que caen en .text justo después de un JAL/JALR
+    // (es decir, direcciones de retorno guardadas). Puede incluir restos viejos de la pila, pero
+    // las primeras suelen ser la cadena de llamadas real.
+    void printGuestBacktrace(const uint8_t *rdram, uint32_t sp, uint32_t ra)
+    {
+        constexpr uint32_t kTextBegin = 0x00100008u;
+        constexpr uint32_t kTextEnd = 0x0029BBA4u;
+        std::cout << "[gow:heap]   backtrace: " << hex32(ra);
+        int found = 0;
+        for (uint32_t off = 0; off < 0x800u && found < 16; off += 4u)
+        {
+            const uint32_t value = read32(rdram, sp + off);
+            if (value < kTextBegin + 8u || value >= kTextEnd || (value & 3u) != 0u)
+                continue;
+            const uint32_t call = read32(rdram, value - 8u);
+            const bool isJal = (call >> 26) == 3u;
+            const bool isJalr = (call >> 26) == 0u && (call & 0x3Fu) == 9u;
+            if (isJal || isJalr)
+            {
+                std::cout << " <- " << hex32(value - 8u);
+                ++found;
+            }
+        }
+        std::cout << std::endl;
+    }
+
+    void treeNodeAllocProbe(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        g_originalTreeNodeAlloc(rdram, ctx, runtime);
+        const uint32_t count = g_treeNodeAllocs.fetch_add(1) + 1u;
+        if (getRegU32(ctx, 2) == 0u && !g_treeReportedNull.exchange(true))
+        {
+            std::cout << "[gow:heap] POOL DEL ÁRBOL AGOTADO: la reserva de nodo #" << count << " devolvió 0" << std::endl;
+        }
+    }
+
+    void treeFindProbe(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t rootPtr = getRegU32(ctx, 4);
+        const uint32_t key = getRegU32(ctx, 5);
+        const uint32_t nil = read32(rdram, kTreeNilPtr);
+        const uint32_t base = read32(rdram, kTreePoolBasePtr);
+        uint32_t node = read32(rdram, rootPtr);
+
+        uint32_t depth = 0;
+        if (node != 0u && !g_treeReportedCycle.load())
+        {
+            while (node != nil && depth < kTreeMaxDepth)
+            {
+                const uint32_t nodeKey = read32(rdram, node);
+                if (nodeKey == key)
+                    break;
+                const uint32_t index = (key < nodeKey) ? (read32(rdram, node + 8u) >> 16) : (read32(rdram, node + 0xCu) & 0xFFFFu);
+                node = base + index * 16u;
+                ++depth;
+            }
+        }
+        if (depth >= kTreeMaxDepth && !g_treeReportedCycle.exchange(true))
+        {
+            std::cout << "[gow:heap] ÁRBOL CON CICLO: raíz=" << hex32(read32(rdram, rootPtr)) << " (en " << hex32(rootPtr) << ")"
+                      << " clave=" << hex32(key) << " base=" << hex32(base) << " vacío=" << hex32(nil)
+                      << " nodos reservados=" << g_treeNodeAllocs.load() << " desde=" << hex32(getRegU32(ctx, 31)) << std::endl;
+            printGuestBacktrace(rdram, getRegU32(ctx, 29), getRegU32(ctx, 31));
+            node = read32(rdram, rootPtr);
+            for (int i = 0; i < 6 && node != nil; ++i)
+            {
+                const uint32_t nodeKey = read32(rdram, node);
+                const uint32_t lr = read32(rdram, node + 8u);
+                const uint32_t right = read32(rdram, node + 0xCu) & 0xFFFFu;
+                std::cout << "[gow:heap]     nodo " << hex32(node) << " (#" << ((node - base) / 16u) << ") clave=" << hex32(nodeKey)
+                          << " izq=#" << (lr >> 16) << " der=#" << right
+                          << " +4=" << hex32(read32(rdram, node + 4u)) << " +8=" << hex32(lr) << std::endl;
+                const uint32_t index = (key < nodeKey) ? (lr >> 16) : right;
+                node = base + index * 16u;
+            }
+        }
+
+        g_originalTreeFind(rdram, ctx, runtime);
+    }
+
     void applyHeapDebug(PS2Runtime &runtime)
     {
         const char *flag = std::getenv("GOW_HEAP_DEBUG");
@@ -211,6 +307,13 @@ namespace
         g_originalMalloc = runtime.lookupFunction(kMallocAddr);
         runtime.registerFunction(kCreateHeapAddr, &createHeapProbe);
         runtime.registerFunction(kMallocAddr, &mallocProbe);
+        if (runtime.hasFunction(kTreeFindAddr) && runtime.hasFunction(kTreeNodeAllocAddr))
+        {
+            g_originalTreeFind = runtime.lookupFunction(kTreeFindAddr);
+            g_originalTreeNodeAlloc = runtime.lookupFunction(kTreeNodeAllocAddr);
+            runtime.registerFunction(kTreeFindAddr, &treeFindProbe);
+            runtime.registerFunction(kTreeNodeAllocAddr, &treeNodeAllocProbe);
+        }
         std::cout << "[gow:heap] diagnóstico del heap activo (GOW_HEAP_DEBUG=1)" << std::endl;
     }
 }

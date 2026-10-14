@@ -11,6 +11,16 @@ cd ROMS-nativas-PS2
 
 Si ya lo tenías clonado sin submódulos: `git submodule update --init --recursive`.
 
+**El submódulo apunta a nuestro fork** (`DaniSBR1/PS2Recomp`, rama `godofwar`), que lleva arreglos del IOP que el original no tiene. Si clonaste antes del 2026-10-14, cuando apuntaba a `ran-j/PS2Recomp`, actualiza la URL una vez:
+
+```powershell
+git pull
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+Sin esto el juego se queda colgado en la RPC de sonido (`0x26C0E8`).
+
 ## 2. Compilador de C++ y CMake
 
 Hace falta **Visual Studio 2022** (Community o Build Tools) con la carga de trabajo *Desarrollo para el escritorio con C++*, que incluye MSVC y CMake:
@@ -79,5 +89,6 @@ Los cambios manuales a la config **no** se hacen en `gow.toml`, sino en `config/
 
 - **PCSX2** (con su debugger): ejecuta el juego real, pon breakpoints en direcciones y mira qué devuelve una función. Es la forma más rápida de saber cómo *debería* comportarse algo que en el port falla.
 - **ripgrep** (`winget install BurntSushi.ripgrep.MSVC`): sirve para buscar direcciones en `generated/`, que tiene miles de archivos.
+- **Python 3 + `capstone` + `pyelftools`** (`py -3 -m pip install capstone pyelftools`): para los scripts de `tools/` (ver `tools/README.md`).
 - **Discord de PS2Recomp**: https://discord.gg/JQ8mawxUEf
 - **PS2Tek** (documentación del hardware): https://psi-rockin.github.io/ps2tek/
