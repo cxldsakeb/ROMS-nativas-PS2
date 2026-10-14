@@ -62,7 +62,7 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 
 - **Fase:** 4 (IOP, módulos y archivos). El juego pasa toda la inicialización del EE y del IOP, con el sonido incluido, **abre su primer recurso del disco (`R_Perm`) y empieza a leerlo** (unos 1,6 de sus 3,6 MB). Ver `docs/ROADMAP.md`.
 - **Sesión del 2026-10-14 (cxldsakeb, rama `fase4/smpd-r-perm`).** Resuelto el fallo de `R_Perm`; detalles en `docs/NOTES.md`.
-  1. **Causa real:** el `sprintf` de sysclib del IOP emulado copiaba el formato sin sustituir nada, así que SMPD buscaba el archivo `"%s.wad"`. Arreglado **en el fork** (`iop_format.h`: `sprintf`/`vsprintf` con formato). Commit `5dbe580` en la rama local `godofwar-iop-sprintf` del submódulo, **pendiente de subir a `DaniSBR1/PS2Recomp`** (cxldsakeb no tiene permiso de escritura en el fork).
+  1. **Causa real:** el `sprintf` de sysclib del IOP emulado copiaba el formato sin sustituir nada, así que SMPD buscaba el archivo `"%s.wad"`. Arreglado **en el fork** (`iop_format.h`: `sprintf`/`vsprintf` con formato). Commit `5dbe580` en la rama `godofwar` del fork; el submódulo ya apunta a él.
   2. **Corrección en `overrides/gow_cd.cpp`:** la capa 1 empieza en el sector **2080544**, no en el 2080560 (allí está su PVD, que va en su sector 16). SMPD calcula la base de `PART2.PAK` como `layer1_start + 0x10B`, así que con el valor viejo los 794 recursos de `PART2.PAK` quedaban desplazados.
   3. Mapa de SMPD_IOP: tabla de comandos, `disc_scan`, `parse_toc`, `find_file`, `OpenResourceFile`… (NOTES.md, "Funciones identificadas").
 - **Bloqueo actual:** SMPD lee `R_PERM.WAD` hasta el sector 2363 y para. En el EE se ve sobre todo el worker de libmc2 (`0x27CBD0`, `pc=0x27CC00`/`0x27CE80`). Hipótesis: el EE dejó de consumir el stream, o el juego reintenta con la tarjeta de memoria (no hay tarjeta en el IOP emulado).
@@ -89,10 +89,9 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
   - Heap del juego pisado por `guestMalloc` (`overrides/gow_memory.cpp`), bucle de libcdvd (`gow_cd.cpp`), arranque "desde disco" con los 8 IRX (`gow_boot.cpp`), RPC de sonido (fork), 634 funciones que faltaban (`gow.manual.toml`), IRX embebido (`gow_iop.cpp`) y `R_Perm` abierto (`sprintf` del IOP en el fork + capa 1 corregida en `gow_cd.cpp`).
   - Fork de PS2Recomp creado y submódulo apuntando a él.
 - **Pendiente:**
-  - **Subir el commit `5dbe580` (sprintf del IOP) a `DaniSBR1/PS2Recomp`, rama `godofwar`, y actualizar el puntero del submódulo.** Hasta entonces, quien no tenga ese commit seguirá sin poder abrir `R_Perm`.
   - La lectura de `R_PERM.WAD` que se para (siguiente paso de arriba).
   - Que ErickFRD20 complete SETUP y reproduzca el arranque. Ojo: necesita el `git submodule sync`.
   - Repartir las áreas: análisis, runtime y gráficos.
   - Proponer al PS2Recomp original los arreglos de "Cambios necesarios en PS2Recomp" (NOTES.md): heap y presupuesto del IOP, `printf`/`sprintf`, `loadModuleBuffer` desde el IOP, `SetupThread` con `argc`/`argv`, `sceCdReadDvdDualInfo` y `guestMalloc` con zona propia.
   - Revisar los tres stubs en conflicto (`StartThread`/`iWakeupThread`/`InitTLB`, ver NOTES.md).
-  - Cambio pendiente de subir en el submódulo: el commit `5dbe580` (rama local `godofwar-iop-sprintf` en el PC de cxldsakeb). `register_functions.cpp` y los archivos copiados al runner cambian con cada sync y se ignoran (`ignore = dirty`).
+  - Cambio pendiente de commit en el submódulo: ninguno (cxldsakeb ya es colaborador del fork y puede subir a `godofwar`). `register_functions.cpp` y los archivos copiados al runner cambian con cada sync y se ignoran (`ignore = dirty`).
