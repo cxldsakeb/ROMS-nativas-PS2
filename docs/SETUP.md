@@ -1,0 +1,81 @@
+# Instalación del entorno (Windows)
+
+Hay que seguir estos pasos **una vez por persona**. Todos los comandos se ejecutan en PowerShell, desde la raíz del repo.
+
+## 1. Clonar el repo (con el submódulo)
+
+```powershell
+git clone --recurse-submodules https://github.com/cxldsakeb/ROMS-nativas-PS2.git
+cd ROMS-nativas-PS2
+```
+
+Si ya lo tenías clonado sin submódulos: `git submodule update --init --recursive`.
+
+## 2. Compilador de C++ y CMake
+
+Hace falta **Visual Studio 2022** (Community o Build Tools) con la carga de trabajo *Desarrollo para el escritorio con C++*, que incluye MSVC y CMake:
+
+```powershell
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+Los scripts encuentran solos el CMake que trae Visual Studio. Si usas otra versión de VS, pásala con `.\scripts\build-tools.ps1 -Generator "<generador>"`.
+
+## 3. Permitir ejecutar los scripts
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+## 4. Extraer tu copia del juego
+
+```powershell
+.\scripts\extract-iso.ps1 -IsoPath "ruta\a\God of War.iso"
+```
+
+- Copia el DVD entero a `game/disc/` (unos 4–8 GB) y detecta el ELF principal (en la versión USA es `SCUS_973.99`).
+- Al final imprime el **SHA1 del ELF**. Compáralo con el de [NOTES.md](NOTES.md). Si no coincide, tienes otra región o revisión y las direcciones del proyecto **no te van a servir**.
+- Solo funciona con `.iso`. Si tu copia es `.bin/.cue` u otro formato, conviértela antes a ISO.
+
+## 5. Compilar las herramientas de PS2Recomp
+
+```powershell
+.\scripts\build-tools.ps1
+```
+
+La primera vez tarda varios minutos. Genera `ps2_analyzer.exe` y `ps2_recomp.exe` en `out/build/`.
+
+## 6. Ghidra + extensión Emotion Engine
+
+Basta con que lo instale **una persona** (quien se encargue del análisis), aunque viene bien que lo tengáis todos para investigar funciones.
+
+1. **Java 21**: `winget install EclipseAdoptium.Temurin.21.JDK`
+2. **Ghidra 12.1.4**: descárgalo de https://github.com/NationalSecurityAgency/ghidra/releases y descomprímelo (por ejemplo en `C:\ghidra`).
+3. **Extensión Emotion Engine** (el procesador de PS2, con soporte de MMI/VU0, que el MIPS normal de Ghidra no decodifica bien): descarga de https://github.com/chaoticgd/ghidra-emotionengine-reloaded/releases el zip **de tu versión exacta de Ghidra** (`ghidra_12.1.4_PUBLIC_..._ghidra-emotionengine-reloaded.zip`). En Ghidra: *File → Install Extensions → +*, elige el zip y reinicia Ghidra.
+4. Crea un proyecto de Ghidra **fuera del repo** (o en `ghidra/`, que está ignorada) e importa `game/disc/SCUS_973.99`. Al importar, comprueba que el formato sea ELF y el lenguaje el de la extensión (*r5900*). Acepta el análisis automático; tarda un rato.
+5. Exporta la config para el recompilador: *Window → Script Manager → Manage Script Directories* → añade `PS2Recomp/ps2xRecomp/tools/ghidra`, busca `ExportPS2Functions` y ejecútalo.
+   - Cuando pida el TOML, guárdalo como `config/gow.toml`.
+   - Cuando pida el CSV, guárdalo como `config/gow_functions.csv`.
+
+**Atajo para probar el pipeline sin Ghidra** (peores límites de función, solo para el primer día):
+
+```powershell
+.\out\build\ps2xAnalyzer\Release\ps2_analyzer.exe game\disc\SCUS_973.99 config\gow.toml
+```
+
+## 7. Recompilar y arrancar
+
+```powershell
+.\scripts\recompile.ps1     # ELF → C++ (generated/) → runner de PS2Recomp
+.\scripts\run.ps1           # compila ps2EntryRunner y arranca el juego; log en out/logs/
+```
+
+- La primera compilación del runner con todo el código de God of War **va a tardar bastante**.
+- Si solo cambiaste algo en `overrides/`: `.\scripts\recompile.ps1 -SyncOnly` y luego `.\scripts\run.ps1`.
+
+## 8. Herramientas de apoyo recomendadas
+
+- **PCSX2** (con su debugger): ejecuta el juego real, pon breakpoints en direcciones y mira qué devuelve una función. Es la forma más rápida de saber cómo *debería* comportarse algo que en el port falla.
+- **ripgrep** (`winget install BurntSushi.ripgrep.MSVC`): sirve para buscar direcciones en `generated/`, que tiene miles de archivos.
+- **Discord de PS2Recomp**: https://discord.gg/JQ8mawxUEf
+- **PS2Tek** (documentación del hardware): https://psi-rockin.github.io/ps2tek/

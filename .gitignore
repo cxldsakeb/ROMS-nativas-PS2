@@ -1,11 +1,36 @@
-﻿# Imágenes de juegos / ROMs (pesadas para GitHub)
+# ─────────────────────────────────────────────────────────────
+#  NUNCA subir nada del juego: ni ISO, ni ELF, ni archivos del disco.
+#  Cada uno extrae su propia copia en game/ (ver docs/SETUP.md).
+# ─────────────────────────────────────────────────────────────
 *.iso
 *.bin
 *.cue
 *.img
 *.chd
 *.cso
+*.mdf
+*.nrg
 *.zip
 *.7z
 *.rar
+game/*
+!game/README.md
 
+# Código C++ generado por el recompilador (derivado del ELF: se regenera en local)
+generated/
+
+# Builds y logs
+out/
+*.log
+
+# Proyectos de Ghidra (contienen el binario del juego)
+*.gpr
+*.rep/
+ghidra/
+
+# Editor / SO
+.vs/
+.vscode/*
+!.vscode/extensions.json
+Thumbs.db
+desktop.ini
