@@ -45,22 +45,27 @@ scripts/run.ps1 [-Config] [-NoBuild]     compila ps2EntryRunner y arranca; log e
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
 
-- **Fase:** 3, primer arranque (las fases 1 y 2 están hechas en el PC de cxldsakeb; ver `docs/ROADMAP.md`).
-- **Última sesión (2026-10-14, cxldsakeb):** pipeline completo funcionando: Ghidra → recompile (0 errores) → runner Debug → arranque. El juego carga, ejecuta los constructores, envía los primeros paquetes al GS y **se queda en un bucle en `FUN_0013dc78` (0x13DC78), llamado desde `FUN_0013fca8`**. No hay errores en el log, solo el PC dando vueltas. Detalles en `docs/NOTES.md` (Bloqueos).
-- **SIGUIENTE PASO CONCRETO:** averiguar qué espera ese bucle.
-  1. Abrir `FUN_0013dc78` y `FUN_0013fca8` en el descompilador de Ghidra (proyecto `ghidra/GodOfWar.gpr`, o crearlo con `scripts/ghidra-analyze.ps1`).
-  2. Comparar con el juego real en el debugger de PCSX2: breakpoint en `0x13DC78` y ver qué valor hace salir del bucle.
-  3. Mirar en el runtime (`PS2Recomp/ps2xRuntime/src/lib/Kernel/Stubs/DMA.cpp`, `GS.cpp`) si falta completar el DMA/GIF o una interrupción (vsync, DMAC) que el juego espera.
-  4. Arreglarlo con un override en `overrides/` o un binding en `config/gow.manual.toml`, repetir el ciclo y apuntar el resultado.
+- **Fase:** 3, primer arranque, a punto de pasar a la 4 (IOP, módulos y archivos). Ver `docs/ROADMAP.md`.
+- **Última sesión (2026-10-14, DaniSBR1):** **resuelto el bucle de `FUN_0013dc78`.** Era el malloc del juego recorriendo una lista de libres corrupta: el stub HLE de `sceGsResetGraph` reservaba memoria con `guestMalloc` justo encima de la cabecera del heap "Root" del juego (ambos empiezan en `0x35C1B0`). Arreglado con `overrides/gow_memory.cpp` (TEMPORAL), que reserva 1 MB del final de "Root" para el runtime. Ahora el juego sube una textura, dibuja un sprite y presenta frames, y **se queda en un bucle de espera en `0x27A768`** (`FUN_0027a6b8`), que reintenta `0x297290(…, 0x80000593, 0)`: parece `sceSifBindRpc` al servidor de CD/DVD del IOP. Detalles en `docs/NOTES.md`.
+- **SIGUIENTE PASO CONCRETO:** averiguar qué servidor RPC espera el juego y dárselo.
+  1. Confirmar en Ghidra que `0x297290` es `sceSifBindRpc` y qué función de `libcdvd` es `FUN_0027a6b8` (¿`sceCdSearchFile`?).
+  2. Buscar en `PS2Recomp/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp`, `RPC.cpp`/`SIF.cpp` y en `ps2xIOP` si existe el servidor `0x80000593`.
+  3. Si no existe, valorar enlazar las funciones `sceCd*` del juego a los stubs de `CD.cpp` en `config/gow.manual.toml` (como ya se hace con `sceGs*`/`sceMpeg*`) o implementar el servidor.
+- **Diagnóstico de memoria:** `$env:GOW_HEAP_DEBUG = "1"` antes de `run.ps1` activa `overrides/gow_heap_debug.cpp`, que registra cada `heap_create` y avisa si se rompe la lista de libres de un heap. Cualquier stub del runtime que use `guestMalloc` puede volver a pisar memoria del juego.
 - **Build de referencia:** God of War USA, SCUS-97399 v1.00, ELF `SCUS_973.99`, SHA1 `64B10DB280304115DA4BC2066238D29023DF0A06`. Los datos completos están en `docs/NOTES.md`.
 - **Importante:** el juego lee por sector (LBN) vía `GODOFWAR.TOC` y el DVD es de doble capa. El runtime usa la ISO completa como imagen de CD, configurada en `overrides/gow_overrides.cpp` a partir de `game/iso-path.txt`.
+- **Overrides en unity build:** CMake junta los `.cpp` del runner en bloques (`unity_N_cxx.cxx`), así que los `namespace { }` de varios overrides pueden acabar en el mismo bloque. Usad nombres con prefijo por archivo (`kMem…`, `g_mem…`) para no chocar.
 - **Hecho:**
   - Estructura del repo, scripts y docs. `build-tools.ps1` verificado (VS 2022 Build Tools, MSVC 14.44, CMake 3.31).
   - ISO extraída. Ghidra + extensión EE + JDK 21 instalados; `config/gow.toml` ya sale de Ghidra.
-  - El runner compila (Debug, 5 min) y el juego arranca hasta el bucle de arriba.
+  - El runner compila (Debug, 5 min) y el juego arranca.
+  - DaniSBR1 completó SETUP y lo reproduce igual: mismo SHA1, mismo export de Ghidra y misma recompilación (0 errores, 3587 avisos). Runner Debug en unos 20 min con 12 hilos; con `recompile.ps1 -SyncOnly`, si solo cambian los overrides, recompilar y enlazar tarda alrededor de 1 min. Ghidra funciona también con JDK 23 (`$env:JAVA_HOME`).
+  - Sistema de memoria del juego identificado (`heap_create`, malloc, free, pila de heaps); ver NOTES.md.
+  - Bucle de `FUN_0013dc78` resuelto (`overrides/gow_memory.cpp`).
 - **Pendiente:**
-  - Que DaniSBR1 y ErickFRD20 completen SETUP: pasos 1–5, Ghidra (paso 6) y un primer `recompile.ps1` + `run.ps1`. Lo deben reproducir igual: mismo SHA1, mismo bucle.
+  - Que ErickFRD20 complete SETUP y reproduzca el arranque.
   - Repartir las áreas: análisis, runtime y gráficos.
-  - Resolver el bucle de `FUN_0013dc78` (siguiente paso de arriba).
+  - Bucle de espera RPC en `0x27A768` (siguiente paso de arriba).
   - Revisar los tres stubs en conflicto (`StartThread`/`iWakeupThread`/`InitTLB`, ver NOTES.md).
+  - Proponer a PS2Recomp que `guestMalloc` use una zona propia en lugar de la memoria del juego (NOTES.md, "Cambios necesarios en PS2Recomp").
   - Cambio pendiente de commit en el submódulo: ninguno (todo lo copiado al runner es local y está ignorado).
