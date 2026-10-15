@@ -78,6 +78,14 @@ Desde el 2026-10-15 usamos **DeepSeek V4.1 Flash, gratis en OpenCode**, como ayu
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
 
+### La intro se reproduce con el runtime de KIexster (cxldsakeb, 2026-10-15, rama `fase5/fmv`)
+
+- **Prueba en local de su runtime entero** (los 118 parches + #271/#274, rama local `kiexster-base` del submódulo, **no subida**) con nuestros overrides. Con OpenGL (`PS2X_GS_GPU=1`) la lógica va a **41–71 FPS** (nosotros, 5,5) y llega al menú en 8 s. **Kratos sigue blanco**, así que la causa no está en sus parches del runtime.
+- Tras elegir la dificultad se quedaba parado: el `sceIpuInit` genérico del runtime trae direcciones de otro juego. **`overrides/gow_fmv.cpp`** (adaptado de su `gowIpuInit`) lo arregla y **la intro se reproduce** (Kratos en el acantilado). `GOW_SKIP_FMV=1` salta los vídeos.
+- **`docs/KIEXSTER.md`**: sus 118 parches por frente y cuáles tenemos ya (5 de Gráficos, 8 de Base y algunos parciales; ninguno de Rendimiento). Sale de las primeras tareas con DeepSeek.
+- NOTES.md: 15 funciones con nombre sacadas de su bitácora (`vid::Flip`, `CalcSkinHierarchy`, `renModelServer::ProcessServer`…) y las dos filas de bloqueos.
+- **Siguiente:** decidir si adoptamos su runtime como base del fork (la ganancia de velocidad y la intro lo piden) o traemos parche a parche (`mpeg-nodata` hará falta para el vídeo en nuestro fork); y seguir con Kratos blanco mirando sus overrides y su configuración.
+
 ### Kratos aparece: arreglos traídos de KIexster (cxldsakeb, 2026-10-15, rama `fase5/kratos`)
 
 - **Referencia nueva: [KIexster/god-of-war-recomp](https://github.com/KIexster/god-of-war-recomp)**, otro port del mismo juego con PS2Recomp (GPLv3), bastante más avanzado: llega a la partida a 12–25 FPS. Aplica 118 parches sobre PS2Recomp `c5a9d02`, que ya está en la historia de nuestro fork, y su `docs/ESTADO.md` es una bitácora muy detallada. **Antes de investigar un bloqueo, mira si ellos ya lo resolvieron.** Lo que se adapte va con comentario en inglés y citando la fuente; los créditos están en el README.
