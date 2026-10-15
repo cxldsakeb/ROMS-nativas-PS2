@@ -55,9 +55,11 @@ Seguir el bucle de la [guía de PS2Recomp para juegos sin símbolos](https://git
 ### Fase 5: Primeras imágenes
 
 - [x] Ruta GIF → GS: algo aparece en pantalla (logos, pantallas 2D). **2026-10-14:** en `RelWithDebInfo` se ven la pantalla legal de Sony y la de título (logo de God of War, fondo del menú, "New Game").
-- [ ] Texto de la fuente completo. **2026-10-14:** tras el arreglo de la VU1 y del FLG 3 del GIF, el texto de los menús sale completo; falta confirmar las dos líneas grises.
+- [x] Texto de la fuente completo. **2026-10-14:** tras el arreglo de la VU1 y del FLG 3 del GIF, el texto de los menús sale completo. **2026-10-15:** confirmado en capturas del menú principal ("New Game", "Select") y del de dificultad ("Choose Difficulty" y las cuatro opciones): sin bloques grises.
 - [ ] VIF1 / VU1: los microprogramas de geometría de God of War. **Es el mayor riesgo técnico.** **2026-10-14:** el intérprete de VU1 se corrigió contra PCSX2 (fork `7eb4a1b`) y ya termina todos los microprogramas (205 000 sin atascos). Con el DMA de la scratchpad en modo cadena (fork `86d6fb9`), las matrices ya llegan y desaparecen los triángulos basura. Comparado con el juego real, falta **Kratos** (manchas negras en su lugar) y sobran unas astillas grises y un tramado: es el siguiente frente.
 - [ ] Vídeos MPEG (IPU, con FFmpeg).
+- [x] Mando: entrada con raylib (mando y teclado), retención de pulsaciones, conexión en caliente, puerto 2 y vibración XInput (`overrides/gow_pad.cpp`, PR #9). Probado por DaniSBR1 con un mando de Xbox el 2026-10-15.
+- [ ] Velocidad. **2026-10-15:** la lógica iba a 1,8 FPS; el perfilador (`GOW_PROFILE=1`) mostró ~76 % en el rasterizador del GS por software. Con el GS en paralelo (fork `1e3161e`), 3,9 FPS. Pendiente: medir con `AGRESSIVE_LOGS` apagado, y después el planificador del IOP y la VU1 (PR #10).
 
 **Hecho cuando:** se ve **correctamente** el menú principal (la escena 3D de Kratos y el texto) y se llega a él **sin pulsar nada**. *(2026-10-14: se llega al menú principal y al de opciones, y el texto sale completo; falta la geometría 3D del fondo. Referencia para corregirlo: PCSX2.)*
 
@@ -80,7 +82,8 @@ Somos dos, así que cada uno lleva una o dos áreas, para no pisarnos en los mis
 | Área | Qué hace | Quién |
 |---|---|---|
 | **Gráficos / Media** | GIF/GS, VIF1/VU1, IPU/vídeos, audio (fases 5–6), y las compilaciones pesadas | @cxldsakeb |
-| **Mando / Entrada** | `overrides/gow_pad.cpp`: mandos de PC reales, conexión en caliente, puerto 2, vibración y, más adelante, SIO2 en el IOP | @DaniSBR1 |
+| **Mando / Entrada** | `overrides/gow_pad.cpp`: mandos de PC reales, conexión en caliente, puerto 2, vibración y, más adelante, SIO2 en el IOP. **Hecho lo básico (2026-10-15)**; queda la vibración de DualShock 4/DualSense y el SIO2 | @DaniSBR1 |
+| **Rendimiento** | Perfilar (`GOW_PROFILE=1`) y acelerar lo que frena el juego: GS por CPU, IOP, VU1 | @DaniSBR1 (cxldsakeb compila) |
 | **Análisis / RE** | Ghidra: límites de función, nombrar funciones, averiguar qué hace cada `sub_xxx`, mantener `config/gow.toml` | según haga falta |
 | **Runtime / Sistema** | Syscalls, IOP/IRX, SIF/RPC, archivos, overrides de arranque (fases 3–4) | según haga falta |
 

@@ -11,9 +11,14 @@
 
 .PARAMETER SyncOnly
     No recompila: solo vuelve a copiar generated/ y overrides/ al runner (útil tras editar un override).
+
+.PARAMETER AggressiveLogs
+    Reconfigura CMake con AGRESSIVE_LOGS activado (por defecto, desactivado; ver build-tools.ps1).
+    Cambiarlo obliga a una compilación completa.
 #>
 param(
-    [switch]$SyncOnly
+    [switch]$SyncOnly,
+    [switch]$AggressiveLogs
 )
 . "$PSScriptRoot\_common.ps1"
 
@@ -90,6 +95,6 @@ Write-Host "Copiados $($copied.Count) archivos al runner de PS2Recomp."
 # a la regeneración automática durante el build, MSBuild compila con el proyecto viejo y
 # el enlazado falla con miles de LNK2019.
 if (Test-Path (Join-Path $BuildDir 'CMakeCache.txt')) {
-    Invoke-Native (Get-CMake) @('-S', $RecompDir, '-B', $BuildDir) | Out-Null
+    Invoke-Native (Get-CMake) @('-S', $RecompDir, '-B', $BuildDir, (Get-AggressiveLogsDefine $AggressiveLogs)) | Out-Null
 }
 Write-Host 'Siguiente paso: .\scripts\run.ps1'

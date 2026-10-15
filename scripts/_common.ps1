@@ -18,6 +18,12 @@ $RunnerSrcDir = Join-Path $RecompDir 'ps2xRuntime\src\runner'
 $RunnerIncDir = Join-Path $RecompDir 'ps2xRuntime\include'
 $SyncManifest = Join-Path $RepoRoot 'out\synced-files.txt'
 
+# AGRESSIVE_LOGS del runtime: apagado salvo que se pida (cuesta ~11 % del tiempo del juego)
+function Get-AggressiveLogsDefine([bool]$Enabled) {
+    if ($Enabled) { return '-DPS2X_ENABLE_AGRESSIVE_LOGS=ON' }
+    return '-DPS2X_ENABLE_AGRESSIVE_LOGS=OFF'
+}
+
 function Get-CMake {
     $cmd = Get-Command cmake -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
