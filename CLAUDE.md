@@ -6,9 +6,10 @@ Este archivo lo carga Claude Code automáticamente. Es el **hilo compartido** en
 
 - **Objetivo:** recompilar estáticamente God of War (PS2, 2005) a un ejecutable nativo de Windows con [PS2Recomp](https://github.com/ran-j/PS2Recomp).
 - **Submódulo `PS2Recomp/`:** desde el 2026-10-14 apunta a **nuestro fork, [DaniSBR1/PS2Recomp](https://github.com/DaniSBR1/PS2Recomp), rama `godofwar`**, que lleva arreglos del IOP que el original no tiene. Si alguien clonó antes, tiene que ejecutar `git submodule sync --recursive` y `git submodule update --init --recursive`. Sin eso, el juego se cuelga en la RPC de sonido (`0x26C0E8`).
-- **Equipo:** @cxldsakeb (dueño del repo) y @DaniSBR1. Están aprendiendo desde cero: Claude hace de guía, así que explica el porqué de las cosas y no solo el qué.
+- **Equipo:** @cxldsakeb (dueño del repo), @DaniSBR1 y @Alejrr2 (se une el 2026-10-15). Están aprendiendo desde cero: Claude hace de guía, así que explica el porqué de las cosas y no solo el qué.
+- **Para quien se une:** sigue [docs/SETUP.md](docs/SETUP.md) y lee `docs/NOTES.md` y `docs/ROADMAP.md`. Para subir al fork hay que ser colaborador de `DaniSBR1/PS2Recomp` (lo invita DaniSBR1). El reparto de trabajo entre los tres está en "Reparto de trabajo", más abajo.
 - **Idioma:** todo en español (conversación, docs, comentarios y commits). Excepción: los comentarios de código dentro del fork de PS2Recomp van en inglés, como el resto de ese proyecto, para poder proponer los arreglos al original.
-- **Repo:** privado, https://github.com/cxldsakeb/ROMS-nativas-PS2
+- **Repo:** público desde el 2026-10-15 (GPLv3), https://github.com/cxldsakeb/ROMS-nativas-PS2. Por eso la regla 1 importa todavía más: nada del juego, ni en commits, ni en issues, ni en capturas.
 
 ## Reglas que no se rompen
 
@@ -65,11 +66,11 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 ### Kratos aparece: arreglos traídos de KIexster (cxldsakeb, 2026-10-15, rama `fase5/kratos`)
 
 - **Referencia nueva: [KIexster/god-of-war-recomp](https://github.com/KIexster/god-of-war-recomp)**, otro port del mismo juego con PS2Recomp (GPLv3), bastante más avanzado: llega a la partida a 12–25 FPS. Aplica 118 parches sobre PS2Recomp `c5a9d02`, que ya está en la historia de nuestro fork, y su `docs/ESTADO.md` es una bitácora muy detallada. **Antes de investigar un bloqueo, mira si ellos ya lo resolvieron.** Lo que se adapte va con comentario en inglés y citando la fuente; los créditos están en el README.
-- **Fork, rama nueva `godofwar-kiexster`** (encima de `1e3161e`; `godofwar` no se ha tocado):
+- **Fork, `godofwar` en `ed11610`** (revisado por DaniSBR1 y fusionado en `main` el 2026-10-15; dos commits encima de `1e3161e`):
   - `2fa41fb`, EE: FPU (`SQRT.S`/`RSQRT.S` leían el registro equivocado, y sin NaN ni infinitos), ramas de 64 bits, VU0 en modo macro, MMI y el dispatcher que dejaba funciones a medias al ceder el turno. **Cambia el código generado: hace falta `recompile.ps1` completo** (sin `-SyncOnly`) y luego compilar (~45 min con 32 hilos).
   - `ed11610`, VU1: códigos de la EFU (`ERSQRT`/`ESIN`/`EATAN`/`EEXP`) mal numerados.
 - **Resultado:** la Z del 3D deja de ser constante y **Kratos sale en el menú** (hombro y cuello, delante del fuego). Además, el texto del menú sale completo, las astillas grises desaparecen y `gow_state.cpp` deja de actuar. **Pero Kratos sale blanco y sin textura** (primera fila de "Bloqueos"), y la lógica baja de 5,5 a 1,8 FPS (sin perfilar aún).
-- **Para reproducirlo:** el submódulo de `fase5/kratos` apunta a `ed11610`. Después de `git submodule update`: `.\scripts\build-tools.ps1`, `.\scripts\recompile.ps1` y `.\scripts\run.ps1 -Config RelWithDebInfo`.
+- **Para reproducirlo (todos, después de este merge):** `git pull`, `git submodule sync --recursive` y `git submodule update --init --recursive` (el fork debe quedar en `ed11610`). Luego **`.\scripts\build-tools.ps1` y `.\scripts\recompile.ps1` completo** (cambia el recompilador, así que el `-SyncOnly` no basta) y `.\scripts\run.ps1 -Config RelWithDebInfo`.
 - **Siguiente:** (1) la textura de Kratos: estado del GS de sus triángulos y parches del GS por CPU de KIexster; (2) perfilar la caída de FPS; (3) a medio plazo, su renderizador por OpenGL y la VU1 compilada (la gran ganancia de velocidad); (4) borrar `gow_state.cpp` cuando se confirme.
 - Copias locales de trabajo (no se suben): `D:\gowref\theirs` (su árbol: `c5a9d02` + los 118 parches) y `D:\gowref\ours` (rama `godofwar-kiexster`).
 
@@ -121,7 +122,7 @@ Traspaso de DaniSBR1 cumplido: `main` al día y `-SyncOnly`. La primera compilac
 - **Resultado:** 205 000 microprogramas sin un solo atasco (antes, el 3,7 %), y el texto de los menús sale completo. El menú principal y el de opciones se manejan con el teclado.
 - **Sigue mal:** el fondo 3D, con triángulos enormes estirados hasta los bordes. Es la primera fila de "Bloqueos" en NOTES.md.
 - **Para reproducirlo:** `git pull`, `git submodule sync --recursive` y `git submodule update --init --recursive` (el fork debe quedar en `7eb4a1b`). Luego `.\scripts\run.ps1 -Config RelWithDebInfo`. Solo cambió el runtime: no hace falta `recompile.ps1`.
-- **Copia de PCSX2 de cxldsakeb:** `C:\Users\jose1\ref\pcsx2`. La de DaniSBR1 está en `C:\Users\dvind\ref\pcsx2`. Desde esta sesión el sparse checkout incluye también `/pcsx2/x86/microVU*`, `/pcsx2/Dmac.*`, `/pcsx2/Hw*` y `/pcsx2/SPR.*` (`git sparse-checkout add …`).
+- **Copia de PCSX2:** cada uno la tiene en `%USERPROFILE%\ref\pcsx2`. Desde esta sesión el sparse checkout incluye también `/pcsx2/x86/microVU*`, `/pcsx2/Dmac.*`, `/pcsx2/Hw*` y `/pcsx2/SPR.*` (`git sparse-checkout add …`).
 
 ### Matrices a cero: DMA de la scratchpad (cxldsakeb, 2026-10-14, rama `fase5/geometria`)
 
