@@ -6,9 +6,10 @@ Este archivo lo carga Claude Code automáticamente. Es el **hilo compartido** en
 
 - **Objetivo:** recompilar estáticamente God of War (PS2, 2005) a un ejecutable nativo de Windows con [PS2Recomp](https://github.com/ran-j/PS2Recomp).
 - **Submódulo `PS2Recomp/`:** desde el 2026-10-14 apunta a **nuestro fork, [DaniSBR1/PS2Recomp](https://github.com/DaniSBR1/PS2Recomp), rama `godofwar`**, que lleva arreglos del IOP que el original no tiene. Si alguien clonó antes, tiene que ejecutar `git submodule sync --recursive` y `git submodule update --init --recursive`. Sin eso, el juego se cuelga en la RPC de sonido (`0x26C0E8`).
-- **Equipo:** @cxldsakeb (dueño del repo) y @DaniSBR1. Están aprendiendo desde cero: Claude hace de guía, así que explica el porqué de las cosas y no solo el qué.
+- **Equipo:** @cxldsakeb (dueño del repo), @DaniSBR1 y @Alejrr2 (se une el 2026-10-15). Están aprendiendo desde cero: Claude hace de guía, así que explica el porqué de las cosas y no solo el qué.
+- **Para quien se une:** sigue [docs/SETUP.md](docs/SETUP.md) y lee `docs/NOTES.md` y `docs/ROADMAP.md`. Para subir al fork hay que ser colaborador de `DaniSBR1/PS2Recomp` (lo invita DaniSBR1). El reparto de trabajo entre los tres está en "Reparto de trabajo", más abajo.
 - **Idioma:** todo en español (conversación, docs, comentarios y commits). Excepción: los comentarios de código dentro del fork de PS2Recomp van en inglés, como el resto de ese proyecto, para poder proponer los arreglos al original.
-- **Repo:** privado, https://github.com/cxldsakeb/ROMS-nativas-PS2
+- **Repo:** público desde el 2026-10-15 (GPLv3), https://github.com/cxldsakeb/ROMS-nativas-PS2. Por eso la regla 1 importa todavía más: nada del juego, ni en commits, ni en issues, ni en capturas.
 
 ## Reglas que no se rompen
 
