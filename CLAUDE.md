@@ -62,7 +62,18 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
 
-### Traspaso para cxldsakeb: compilación completa y medir los FPS (DaniSBR1, 2026-10-15)
+### Kratos aparece: arreglos traídos de KIexster (cxldsakeb, 2026-10-15, rama `fase5/kratos`)
+
+- **Referencia nueva: [KIexster/god-of-war-recomp](https://github.com/KIexster/god-of-war-recomp)**, otro port del mismo juego con PS2Recomp (GPLv3), bastante más avanzado: llega a la partida a 12–25 FPS. Aplica 118 parches sobre PS2Recomp `c5a9d02`, que ya está en la historia de nuestro fork, y su `docs/ESTADO.md` es una bitácora muy detallada. **Antes de investigar un bloqueo, mira si ellos ya lo resolvieron.** Lo que se adapte va con comentario en inglés y citando la fuente; los créditos están en el README.
+- **Fork, rama nueva `godofwar-kiexster`** (encima de `1e3161e`; `godofwar` no se ha tocado):
+  - `2fa41fb`, EE: FPU (`SQRT.S`/`RSQRT.S` leían el registro equivocado, y sin NaN ni infinitos), ramas de 64 bits, VU0 en modo macro, MMI y el dispatcher que dejaba funciones a medias al ceder el turno. **Cambia el código generado: hace falta `recompile.ps1` completo** (sin `-SyncOnly`) y luego compilar (~45 min con 32 hilos).
+  - `ed11610`, VU1: códigos de la EFU (`ERSQRT`/`ESIN`/`EATAN`/`EEXP`) mal numerados.
+- **Resultado:** la Z del 3D deja de ser constante y **Kratos sale en el menú** (hombro y cuello, delante del fuego). Además, el texto del menú sale completo, las astillas grises desaparecen y `gow_state.cpp` deja de actuar. **Pero Kratos sale blanco y sin textura** (primera fila de "Bloqueos"), y la lógica baja de 5,5 a 1,8 FPS (sin perfilar aún).
+- **Para reproducirlo:** el submódulo de `fase5/kratos` apunta a `ed11610`. Después de `git submodule update`: `.\scripts\build-tools.ps1`, `.\scripts\recompile.ps1` y `.\scripts\run.ps1 -Config RelWithDebInfo`.
+- **Siguiente:** (1) la textura de Kratos: estado del GS de sus triángulos y parches del GS por CPU de KIexster; (2) perfilar la caída de FPS; (3) a medio plazo, su renderizador por OpenGL y la VU1 compilada (la gran ganancia de velocidad); (4) borrar `gow_state.cpp` cuando se confirme.
+- Copias locales de trabajo (no se suben): `D:\gowref\theirs` (su árbol: `c5a9d02` + los 118 parches) y `D:\gowref\ours` (rama `godofwar-kiexster`).
+
+### Traspaso para cxldsakeb: compilación completa y medir los FPS (DaniSBR1, 2026-10-15). **Hecho:** 5,5 FPS (NOTES.md)
 
 DaniSBR1 subió el trabajo de la lentitud y **deja la compilación completa a cxldsakeb**, que tiene la CPU más rápida. Pasos, en orden:
 
