@@ -27,6 +27,7 @@ scripts/build-tools.ps1                  compila ps2_analyzer y ps2_recomp (Rele
 scripts/ghidra-analyze.ps1 [-Reanalyze]  Ghidra headless (r5900) → config/gow.toml + gow_functions.csv (~1 min)
 scripts/recompile.ps1 [-SyncOnly]        gow.toml + gow.manual.toml → out/gow.effective.toml → generated/ → runner; reconfigura CMake
 scripts/run.ps1 [-Config] [-NoBuild]     compila ps2EntryRunner y arranca; log en out/logs/
+scripts/deepseek.ps1 -Tarea -Archivos    tarea de solo lectura para DeepSeek → %TEMP%\gow-deepseek\ (ver "Tareas para DeepSeek")
 tools/*.py                               análisis en Python sin Ghidra (ver tools/README.md)
 ```
 
@@ -58,6 +59,20 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 - **`tools/`**: `elf_dis.py` (desensamblar y leer cadenas), `elf_xref.py` (quién llama a qué o quién toca una global), `irx_dis.py` (módulos del IOP, con nombres de imports) y `scan_missing_functions.py`.
 - **IOP:** el fork ya formatea los `printf` de los IRX (antes salían con `%d` literal) y avisa con `[IOP] call to 0x… did not return` cuando una llamada síncrona se corta. Para investigar RPCs sirvieron trazas locales en `iop_rpc.cpp` (`handleRpc`: SID, `fno`, datos recibidos y devueltos) y `RPC.cpp` (`pushSifRpcDebugEventLocked`); se pueden volver a añadir en local, pero no se suben.
 - Los archivos de `generated/` llevan la dirección en el nombre (`FUN_0027a6b8_0x27a6b8.cpp`) y cada instrucción en un comentario `// 0x…`.
+
+## Tareas para DeepSeek (OpenCode)
+
+Desde el 2026-10-15 usamos **DeepSeek V4.1 Flash, gratis en OpenCode**, como ayudante externo para el trabajo de mucho volumen. Así se ahorra uso de Claude y se pueden lanzar varias tareas a la vez. **Claude: cuando una tarea encaje aquí, propón delegarla, lánzala con el script y revisa siempre el resultado antes de usarlo.**
+
+- **Instalación** (una vez): `npm install -g opencode-ai`. No hace falta cuenta. `opencode models` lista los modelos gratuitos.
+- **Uso:** `.\scripts\deepseek.ps1 -Tarea tarea.md -Archivos <archivos o carpetas>`. La respuesta queda en `%TEMP%\gow-deepseek\<tarea>-<fecha>\salida.md`. El script trabaja en esa carpeta aislada, fuera del repo (dentro, OpenCode vería el resto de archivos y cargaría este CLAUDE.md), y en modo solo lectura (`--agent plan`).
+- **Cómo escribir la tarea:** contexto en dos líneas, qué hacer, reglas ("no inventes", "si dudas, pon `?`") y **un formato de salida exacto**, preferiblemente una tabla con una fila por elemento. Sin formato fijo no se puede comprobar.
+- **Si la entrada es grande** (más de ~70 KB), pártela y lanza un DeepSeek por trozo. Funcionan bien en paralelo.
+- **Sí:** resumir, clasificar o cruzar documentos públicos, como los parches y `docs/ESTADO.md` de KIexster frente a nuestro fork y NOTES.md. También fichas de parches grandes, guías de estudio del runtime, borradores de PR en inglés para el PS2Recomp original y primeras pasadas contra PCSX2 (como lista de candidatos, no como veredicto).
+- **No:** depurar ni decidir arreglos (un modelo "flash" se equivoca con seguridad), ni lo que un script hace mejor (contar, buscar cadenas).
+- **Regla 1, también aquí:** es un servicio externo y gratuito que puede guardar lo que recibe. **Solo material público:** nuestro repo, el fork, PCSX2 y KIexster. Nunca `generated/`, desensamblados del ELF, volcados de la VU, logs de ejecución ni capturas. El script rechaza esas rutas, pero la responsabilidad es de quien lo lanza.
+- **Cómo se revisa:** las columnas mecánicas se comprueban con un script; el contenido, abriendo una muestra (sobre todo lo dudoso). Las direcciones que dé, una a una contra el ELF de referencia (regla 2).
+- **Prueba piloto:** clasificó los 118 parches de KIexster por frente en 3,5 min. Salieron las 118 filas, la columna calculable acertada al 100 % y las 7 revisadas a mano, correctas.
 
 ## Estado actual
 
