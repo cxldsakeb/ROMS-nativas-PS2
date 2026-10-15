@@ -60,7 +60,30 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
 
-- **Fase:** 4 → 5. El juego pasa toda la inicialización, **carga `R_PERM.WAD` entero y llega a su bucle principal de frames** (envía frames al GS, cambia de framebuffer y espera la VBlank), pero va muy lento: unos pocos DMA cada pocos segundos en Debug. Aún no sabemos qué se ve en pantalla. Ver `docs/ROADMAP.md`.
+### Traspaso para la próxima sesión (DaniSBR1), 2026-10-14
+
+cxldsakeb lo deja aquí. **DaniSBR1 sigue desde este punto.** Pasos, en orden:
+
+1. **Ponerse al día.** Revisar y mergear el PR de `fase4/r-perm-stream` (si no está ya), y luego:
+   ```powershell
+   git checkout main; git pull
+   git submodule sync --recursive; git submodule update --init --recursive   # el fork debe quedar en a0e3c5f
+   ```
+2. **Recompilación COMPLETA**, no `-SyncOnly`: cambió `config/gow.manual.toml` (2 funciones nuevas) y el runtime (3 arreglos en el fork).
+   ```powershell
+   .\scripts\recompile.ps1      # ~4 min, 0 errores, ~3600 avisos
+   .\scripts\run.ps1            # compila el runner (Debug) y arranca
+   ```
+3. **Comprobar que se reproduce.** En el log tienen que salir estas líneas:
+   - `[gow:boot] main(argc=1, argv[0]="cdrom0:\SCUS_973.99;1")`
+   - `[gow:cd] DVD de doble capa: capa 1 en el sector 2080544`
+   - los 8 `[SIF module] load-emulated … cdrom0:\…IRX;1`
+   - y, tras 1–2 min, `[run:tick]` casi siempre en `pc=0x17a154`, con `dma=` subiendo poco a poco (unos 250 → 300 en 2 min).
+   - Son normales: ~27 `[IOP] synchronous wait timed out` y `989snd Error: cause 7`.
+   - No debe salir ningún `missing-target`.
+4. **Siguiente trabajo:** el apartado **SIGUIENTE PASO CONCRETO** de abajo. Lo primero es probar `RelWithDebInfo` y **mirar la ventana del juego** (nadie la ha mirado aún).
+
+- **Fase:** 5, primeras imágenes (la 3 y la 4 se cerraron el 2026-10-14, ver `docs/ROADMAP.md`). El juego pasa toda la inicialización, **carga `R_PERM.WAD` entero y llega a su bucle principal de frames** (envía frames al GS, cambia de framebuffer y espera la VBlank), pero va muy lento: unos pocos DMA cada pocos segundos en Debug. Aún no sabemos qué se ve en pantalla. Ver `docs/ROADMAP.md`.
 - **Sesión del 2026-10-14 (cxldsakeb, rama `fase4/r-perm-stream`).** Cuatro bloqueos más, tres de ellos en el runtime (fork). Detalles en `docs/NOTES.md`.
   1. **El hilo principal no esperaba: moría.** En `ps2xIOP`, `WaitSema`/`WaitEventFlag` dentro de un manejador RPC (llamada síncrona, sin hilo) no bloqueaban, así que SMPD mandaba al EE el bloque anterior del disco. El stream de `R_PERM` llegaba desfasado, una cabecera basura provocaba un `memcpy` de ~200 MB y la pila se rompía. **Fork:** esas esperas ejecutan ahora los hilos del IOP hasta cumplirse.
   2. **Interrupción del GS (INTC 0).** El runtime nunca la lanzaba y el juego esperaba para siempre el `FINISH` del GS (`0x183894`). **Fork:** `EeScheduler::pollGsInterrupt`.
