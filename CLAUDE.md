@@ -6,9 +6,10 @@ Este archivo lo carga Claude Code automáticamente. Es el **hilo compartido** en
 
 - **Objetivo:** recompilar estáticamente God of War (PS2, 2005) a un ejecutable nativo de Windows con [PS2Recomp](https://github.com/ran-j/PS2Recomp).
 - **Submódulo `PS2Recomp/`:** desde el 2026-10-14 apunta a **nuestro fork, [DaniSBR1/PS2Recomp](https://github.com/DaniSBR1/PS2Recomp), rama `godofwar`**, que lleva arreglos del IOP que el original no tiene. Si alguien clonó antes, tiene que ejecutar `git submodule sync --recursive` y `git submodule update --init --recursive`. Sin eso, el juego se cuelga en la RPC de sonido (`0x26C0E8`).
-- **Equipo:** @cxldsakeb (dueño del repo) y @DaniSBR1. Están aprendiendo desde cero: Claude hace de guía, así que explica el porqué de las cosas y no solo el qué.
+- **Equipo:** @cxldsakeb (dueño del repo), @DaniSBR1 y @Alejrr2 (se une el 2026-10-15). Están aprendiendo desde cero: Claude hace de guía, así que explica el porqué de las cosas y no solo el qué.
+- **Para quien se une:** sigue [docs/SETUP.md](docs/SETUP.md) y lee `docs/NOTES.md` y `docs/ROADMAP.md`. Para subir al fork hay que ser colaborador de `DaniSBR1/PS2Recomp` (lo invita DaniSBR1). El reparto de trabajo entre los tres está en "Reparto de trabajo", más abajo.
 - **Idioma:** todo en español (conversación, docs, comentarios y commits). Excepción: los comentarios de código dentro del fork de PS2Recomp van en inglés, como el resto de ese proyecto, para poder proponer los arreglos al original.
-- **Repo:** privado, https://github.com/cxldsakeb/ROMS-nativas-PS2
+- **Repo:** público desde el 2026-10-15 (GPLv3), https://github.com/cxldsakeb/ROMS-nativas-PS2. Por eso la regla 1 importa todavía más: nada del juego, ni en commits, ni en issues, ni en capturas.
 
 ## Reglas que no se rompen
 
@@ -110,7 +111,7 @@ Traspaso de DaniSBR1 cumplido: `main` al día y `-SyncOnly`. La primera compilac
 - **Resultado:** 205 000 microprogramas sin un solo atasco (antes, el 3,7 %), y el texto de los menús sale completo. El menú principal y el de opciones se manejan con el teclado.
 - **Sigue mal:** el fondo 3D, con triángulos enormes estirados hasta los bordes. Es la primera fila de "Bloqueos" en NOTES.md.
 - **Para reproducirlo:** `git pull`, `git submodule sync --recursive` y `git submodule update --init --recursive` (el fork debe quedar en `7eb4a1b`). Luego `.\scripts\run.ps1 -Config RelWithDebInfo`. Solo cambió el runtime: no hace falta `recompile.ps1`.
-- **Copia de PCSX2 de cxldsakeb:** `C:\Users\jose1\ref\pcsx2`. La de DaniSBR1 está en `C:\Users\dvind\ref\pcsx2`. Desde esta sesión el sparse checkout incluye también `/pcsx2/x86/microVU*`, `/pcsx2/Dmac.*`, `/pcsx2/Hw*` y `/pcsx2/SPR.*` (`git sparse-checkout add …`).
+- **Copia de PCSX2:** cada uno la tiene en `%USERPROFILE%\ref\pcsx2`. Desde esta sesión el sparse checkout incluye también `/pcsx2/x86/microVU*`, `/pcsx2/Dmac.*`, `/pcsx2/Hw*` y `/pcsx2/SPR.*` (`git sparse-checkout add …`).
 
 ### Matrices a cero: DMA de la scratchpad (cxldsakeb, 2026-10-14, rama `fase5/geometria`)
 
