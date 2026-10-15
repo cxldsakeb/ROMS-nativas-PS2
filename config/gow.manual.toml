@@ -731,6 +731,11 @@ extra_entry_points = [
   "fn_00242d40@0x00242D40",
   "fn_00259100@0x00259100",
   "fn_00259480@0x00259480",
+  # [cxldsakeb] Punteros a funciones construidos en el código con lui+addiu (callbacks pasados como argumento),
+  # que Ghidra no ve. Salen con scan_missing_functions.py (tipo cfn_). 0x1738D8 es el callback de fin de un
+  # comando asíncrono de SMPD (missing-target desde el JALR de 0x26B9F4).
+  "cfn_00131ab0@0x00131AB0",
+  "cfn_001738d8@0x001738D8",
 ]
 
 # [cxldsakeb] Accesos a registros de hardware detectados por ps2_analyzer (dirección de la instrucción = dirección MMIO).

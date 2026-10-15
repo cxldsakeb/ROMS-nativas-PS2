@@ -60,17 +60,42 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
 
-- **Fase:** 4 (IOP, módulos y archivos). El juego pasa toda la inicialización del EE y del IOP, con el sonido incluido, **abre su primer recurso del disco (`R_Perm`) y empieza a leerlo** (unos 1,6 de sus 3,6 MB). Ver `docs/ROADMAP.md`.
-- **Sesión del 2026-10-14 (cxldsakeb, rama `fase4/smpd-r-perm`).** Resuelto el fallo de `R_Perm`; detalles en `docs/NOTES.md`.
-  1. **Causa real:** el `sprintf` de sysclib del IOP emulado copiaba el formato sin sustituir nada, así que SMPD buscaba el archivo `"%s.wad"`. Arreglado **en el fork** (`iop_format.h`: `sprintf`/`vsprintf` con formato). Commit `5dbe580` en la rama `godofwar` del fork; el submódulo ya apunta a él.
-  2. **Corrección en `overrides/gow_cd.cpp`:** la capa 1 empieza en el sector **2080544**, no en el 2080560 (allí está su PVD, que va en su sector 16). SMPD calcula la base de `PART2.PAK` como `layer1_start + 0x10B`, así que con el valor viejo los 794 recursos de `PART2.PAK` quedaban desplazados.
-  3. Mapa de SMPD_IOP: tabla de comandos, `disc_scan`, `parse_toc`, `find_file`, `OpenResourceFile`… (NOTES.md, "Funciones identificadas").
-- **Bloqueo actual:** SMPD lee `R_PERM.WAD` hasta el sector 2363 y para. En el EE se ve sobre todo el worker de libmc2 (`0x27CBD0`, `pc=0x27CC00`/`0x27CE80`). Hipótesis: el EE dejó de consumir el stream, o el juego reintenta con la tarjeta de memoria (no hay tarjeta en el IOP emulado).
+### Traspaso para la próxima sesión (DaniSBR1), 2026-10-14
+
+cxldsakeb lo deja aquí. **DaniSBR1 sigue desde este punto.** Pasos, en orden:
+
+1. **Ponerse al día.** Revisar y mergear el PR de `fase4/r-perm-stream` (si no está ya), y luego:
+   ```powershell
+   git checkout main; git pull
+   git submodule sync --recursive; git submodule update --init --recursive   # el fork debe quedar en a0e3c5f
+   ```
+2. **Recompilación COMPLETA**, no `-SyncOnly`: cambió `config/gow.manual.toml` (2 funciones nuevas) y el runtime (3 arreglos en el fork).
+   ```powershell
+   .\scripts\recompile.ps1      # ~4 min, 0 errores, ~3600 avisos
+   .\scripts\run.ps1            # compila el runner (Debug) y arranca
+   ```
+3. **Comprobar que se reproduce.** En el log tienen que salir estas líneas:
+   - `[gow:boot] main(argc=1, argv[0]="cdrom0:\SCUS_973.99;1")`
+   - `[gow:cd] DVD de doble capa: capa 1 en el sector 2080544`
+   - los 8 `[SIF module] load-emulated … cdrom0:\…IRX;1`
+   - y, tras 1–2 min, `[run:tick]` casi siempre en `pc=0x17a154`, con `dma=` subiendo poco a poco (unos 250 → 300 en 2 min).
+   - Son normales: ~27 `[IOP] synchronous wait timed out` y `989snd Error: cause 7`.
+   - No debe salir ningún `missing-target`.
+4. **Siguiente trabajo:** el apartado **SIGUIENTE PASO CONCRETO** de abajo. Lo primero es probar `RelWithDebInfo` y **mirar la ventana del juego** (nadie la ha mirado aún).
+
+- **Fase:** 5, primeras imágenes (la 3 y la 4 se cerraron el 2026-10-14, ver `docs/ROADMAP.md`). El juego pasa toda la inicialización, **carga `R_PERM.WAD` entero y llega a su bucle principal de frames** (envía frames al GS, cambia de framebuffer y espera la VBlank), pero va muy lento: unos pocos DMA cada pocos segundos en Debug. Aún no sabemos qué se ve en pantalla. Ver `docs/ROADMAP.md`.
+- **Sesión del 2026-10-14 (cxldsakeb, rama `fase4/r-perm-stream`).** Cuatro bloqueos más, tres de ellos en el runtime (fork). Detalles en `docs/NOTES.md`.
+  1. **El hilo principal no esperaba: moría.** En `ps2xIOP`, `WaitSema`/`WaitEventFlag` dentro de un manejador RPC (llamada síncrona, sin hilo) no bloqueaban, así que SMPD mandaba al EE el bloque anterior del disco. El stream de `R_PERM` llegaba desfasado, una cabecera basura provocaba un `memcpy` de ~200 MB y la pila se rompía. **Fork:** esas esperas ejecutan ahora los hilos del IOP hasta cumplirse.
+  2. **Interrupción del GS (INTC 0).** El runtime nunca la lanzaba y el juego esperaba para siempre el `FINISH` del GS (`0x183894`). **Fork:** `EeScheduler::pollGsInterrupt`.
+  3. **Pilas de interrupción encima de la pila principal.** El runtime las tomaba desde `0x2000000`, donde God of War tiene la pila de `main`. **Fork:** `SetupThread` las baja por debajo.
+  4. **2 callbacks que Ghidra no ve** (punteros con `lui`+`addiu`). `tools/scan_missing_functions.py` busca ahora también esos (`cfn_`); añadidos a `config/gow.manual.toml`.
+- **Bloqueo actual (lento, no colgado):** el hilo principal pasa casi todo el tiempo en `0x17A154`, la llamada a `0x1403C8` dentro del bucle de frame. Además, en el arranque hay 27 `[IOP] synchronous wait timed out` (esperas del IOP que ningún hilo señala; cada una consume hasta 1 s de IOP).
 - **SIGUIENTE PASO CONCRETO:**
-  1. Saber qué hace el hilo principal: `[run:tick]` solo muestra un hilo. Probad una traza local que imprima el PC de todos los hilos, o mirad `0x16B050`, donde estaba justo antes.
-  2. Ver qué comandos recibe el worker de libmc2 (`*0x310384`) y qué devuelven (errores `0x8101xxxx`).
-  3. Comprobar si `MC2_D.IRX`/`SIO2MAN`/`SIO2D` responden en el IOP emulado; si no, valorar un HLE de "no hay tarjeta" o de tarjeta vacía.
-- **Trazas locales que sirvieron (no se suben):** en `iop_cdvd.cpp` (`readSectors`: LSN y primeros bytes) y en `IopEmulator::step` (al pasar por `SMPD base 0x4C900 + offset`: argumentos de `add_file`, `find_file`, `OpenResourceFile`…). Con eso se ve qué hace un IRX sin depurador.
+  1. Probar `.\scripts\run.ps1 -Config RelWithDebInfo` (compila en Release con símbolos) y **mirar la ventana**: ¿sale algo en pantalla?
+  2. Ver qué hace `0x1403C8` y cuánto tarda por frame (¿VU1 por CPU?).
+  3. Averiguar qué esperas del IOP agotan el tiempo (añadir en local el SID/`fno` y el PC al aviso) y si alguna debería resolverse de otra forma.
+- **Trazas locales útiles (no se suben):** `[run:threads]` en `ps2_runtime.cpp` (junto a `[run:tick]`: PC, estado y espera de **cada** hilo del EE, con `eeScheduler().snapshot()`); `[ee:pc0]` en `EeScheduler.cpp` (cuando un hilo salta a `pc=0`, imprime `branch_pc`: la última instrucción de salto); `[sif:dma]` en `iop_rpc.cpp` (cada copia IOP→EE); `[cdvd:read]` en `iop_cdvd.cpp`; y un override local que envuelva una función del juego (`lookupFunction` + `registerFunction`) para imprimir sus argumentos.
+  - En la sesión de `R_Perm`: en `iop_cdvd.cpp` (`readSectors`: LSN y primeros bytes) y en `IopEmulator::step` (al pasar por `SMPD base 0x4C900 + offset`: argumentos de `add_file`, `find_file`, `OpenResourceFile`…). Con eso se ve qué hace un IRX sin depurador.
 - **Sesión del 2026-10-14 (DaniSBR1, rama `fase4/rpc-sonido`).** Se resolvieron cuatro bloqueos seguidos; los detalles están en `docs/NOTES.md`, en "Bloqueos" y "Funciones identificadas".
   1. **RPC de sonido (`0x26C0E8`).** El juego envía comandos a 989snd (SID `0x123456`) y espera la respuesta `{0xFFFFFFFF, resultado, 0xFFFFFFFF}` en `0x305600`. Fallaban dos límites del IOP emulado:
      - `SMPD_IOP.IRX` pide 1,1 MB con `AllocSysMemory` y el heap solo tenía 832 KB (el mensaje "failed to allocate memory" era de SMPD, no de 989snd);
@@ -86,12 +111,12 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
   - Estructura del repo, scripts y docs. `build-tools.ps1` verificado (VS 2022 Build Tools, MSVC 14.44, CMake 3.31).
   - Ghidra + extensión EE; `config/gow.toml` sale de Ghidra.
   - DaniSBR1 reproduce todo igual que cxldsakeb: mismo SHA1, mismo export de Ghidra y misma recompilación.
-  - Heap del juego pisado por `guestMalloc` (`overrides/gow_memory.cpp`), bucle de libcdvd (`gow_cd.cpp`), arranque "desde disco" con los 8 IRX (`gow_boot.cpp`), RPC de sonido (fork), 634 funciones que faltaban (`gow.manual.toml`), IRX embebido (`gow_iop.cpp`) y `R_Perm` abierto (`sprintf` del IOP en el fork + capa 1 corregida en `gow_cd.cpp`).
+  - Heap del juego pisado por `guestMalloc` (`overrides/gow_memory.cpp`), bucle de libcdvd (`gow_cd.cpp`), arranque "desde disco" con los 8 IRX (`gow_boot.cpp`), RPC de sonido (fork), 634 funciones que faltaban (`gow.manual.toml`), IRX embebido (`gow_iop.cpp`), `R_Perm` abierto (`sprintf` del IOP en el fork + capa 1 corregida en `gow_cd.cpp`), stream de recursos correcto, interrupción del GS y pilas de interrupción (fork) y el bucle principal alcanzado.
   - Fork de PS2Recomp creado y submódulo apuntando a él.
 - **Pendiente:**
-  - La lectura de `R_PERM.WAD` que se para (siguiente paso de arriba).
+  - El bucle principal va muy lento (siguiente paso de arriba).
   - Que ErickFRD20 complete SETUP y reproduzca el arranque. Ojo: necesita el `git submodule sync`.
   - Repartir las áreas: análisis, runtime y gráficos.
-  - Proponer al PS2Recomp original los arreglos de "Cambios necesarios en PS2Recomp" (NOTES.md): heap y presupuesto del IOP, `printf`/`sprintf`, `loadModuleBuffer` desde el IOP, `SetupThread` con `argc`/`argv`, `sceCdReadDvdDualInfo` y `guestMalloc` con zona propia.
+  - Proponer al PS2Recomp original los arreglos de "Cambios necesarios en PS2Recomp" (NOTES.md): heap y presupuesto del IOP, `printf`/`sprintf`, esperas en llamadas síncronas del IOP, interrupción del GS, pilas de interrupción, `loadModuleBuffer` desde el IOP, `SetupThread` con `argc`/`argv`, `sceCdReadDvdDualInfo` y `guestMalloc` con zona propia.
   - Revisar los tres stubs en conflicto (`StartThread`/`iWakeupThread`/`InitTLB`, ver NOTES.md).
   - Cambio pendiente de commit en el submódulo: ninguno (cxldsakeb ya es colaborador del fork y puede subir a `godofwar`). `register_functions.cpp` y los archivos copiados al runner cambian con cada sync y se ignoran (`ignore = dirty`).

@@ -37,20 +37,20 @@ Cada fase tiene un **criterio de "hecho"** comprobable. No hay que pasar a la si
 
 Seguir el bucle de la [guía de PS2Recomp para juegos sin símbolos](https://github.com/ran-j/PS2Recomp/wiki/PS2Recomp-Stripped-Game-Walkthrough-For-LLMs): ejecutar, leer el log, arreglar el **primer** bloqueo y repetir.
 
-- [ ] `Function at address 0x... not found` → mejorar límites de función en Ghidra o hacer un binding.
+- [x] `Function at address 0x... not found` → mejorar límites de función en Ghidra o hacer un binding. (636 funciones en `gow.manual.toml`: `vfn_`/`fn_`/`cfn_`)
 - [ ] `[Syscall TODO]` → implementar la syscall.
-- [ ] `Unimplemented PS2 stub` → binding a un handler, o `ret0`/`ret1` temporal.
-- [ ] `PC not updating` → buscar el bucle de espera y averiguar qué espera.
+- [x] `Unimplemented PS2 stub` → binding a un handler, o `ret0`/`ret1` temporal. (`sceCdReadDvdDualInfo` reimplementada)
+- [x] `PC not updating` → buscar el bucle de espera y averiguar qué espera. (heap, libcdvd, libdbc, sonido, `R_Perm`, GS…; ver NOTES.md)
 
-**Hecho cuando:** el juego llega a su bucle principal sin quedarse colgado al arrancar.
+**Hecho cuando:** el juego llega a su bucle principal sin quedarse colgado al arrancar. ✅ **Hecho el 2026-10-14**: llega al bucle de frames (`0x17A0E0`–`0x17A36C`).
 
 ### Fase 4: IOP, módulos y archivos
 
-- [ ] Que se carguen los IRX del juego (en `ps2xIOP`) o tengan un HLE que funcione.
-- [ ] Lecturas de `cdrom0:` correctas (los archivos de `game/disc/`).
-- [ ] RPCs SIF del juego con el IOP sin bloqueos.
+- [x] Que se carguen los IRX del juego (en `ps2xIOP`) o tengan un HLE que funcione. (los 8 IRX + el embebido, desde `cdrom0:`)
+- [x] Lecturas de `cdrom0:` correctas (los archivos de `game/disc/`). (SMPD_IOP lee la ISO completa por LBN; `R_PERM.WAD` llega entero)
+- [x] RPCs SIF del juego con el IOP sin bloqueos. (989snd/SMPD; quedan ~27 esperas del IOP que agotan el tiempo, ver NOTES.md)
 
-**Hecho cuando:** el juego lee sus archivos de datos y avanza más allá de la inicialización.
+**Hecho cuando:** el juego lee sus archivos de datos y avanza más allá de la inicialización. ✅ **Hecho el 2026-10-14.**
 
 ### Fase 5: Primeras imágenes
 
