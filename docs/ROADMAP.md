@@ -55,11 +55,11 @@ Seguir el bucle de la [guía de PS2Recomp para juegos sin símbolos](https://git
 ### Fase 5: Primeras imágenes
 
 - [x] Ruta GIF → GS: algo aparece en pantalla (logos, pantallas 2D). **2026-10-14:** en `RelWithDebInfo` se ven la pantalla legal de Sony y la de título (logo de God of War, fondo del menú, "New Game").
-- [ ] Texto de la fuente completo: faltan letras y dos líneas salen como bloques (¿texturas o CLUT de la fuente en el GS?).
-- [ ] VIF1 / VU1: los microprogramas de geometría de God of War. **Es el mayor riesgo técnico.** **2026-10-14:** la escena 3D del menú principal (Kratos) se dibuja con texturas correctas pero con los triángulos deformados: es el siguiente frente.
+- [ ] Texto de la fuente completo. **2026-10-14:** tras el arreglo de la VU1 y del FLG 3 del GIF, el texto de los menús sale completo; falta confirmar las dos líneas grises.
+- [ ] VIF1 / VU1: los microprogramas de geometría de God of War. **Es el mayor riesgo técnico.** **2026-10-14:** el intérprete de VU1 se corrigió contra PCSX2 (fork `7eb4a1b`) y ya termina todos los microprogramas (205 000 sin atascos), pero el fondo 3D del menú sigue con triángulos enormes estirados: es el siguiente frente.
 - [ ] Vídeos MPEG (IPU, con FFmpeg).
 
-**Hecho cuando:** se ve **correctamente** el menú principal (la escena 3D de Kratos y el texto) y se llega a él **sin pulsar nada**. *(2026-10-14: se llega al menú principal con "NEW GAME"; faltan la geometría 3D del fondo (VU1) y letras del texto. Referencia para corregirlo: PCSX2.)*
+**Hecho cuando:** se ve **correctamente** el menú principal (la escena 3D de Kratos y el texto) y se llega a él **sin pulsar nada**. *(2026-10-14: se llega al menú principal y al de opciones, y el texto sale completo; falta la geometría 3D del fondo. Referencia para corregirlo: PCSX2.)*
 
 ### Fase 6: Hacia jugable
 
@@ -73,14 +73,17 @@ Seguir el bucle de la [guía de PS2Recomp para juegos sin símbolos](https://git
 
 Resolución nativa, 60 FPS, configuración de controles y el resto de lo que hace "nativo" a un port.
 
-## Reparto propuesto
+## Reparto
 
-Somos dos, así que cada uno puede llevar una o dos áreas, para no pisarnos en los mismos archivos:
+Somos dos, así que cada uno lleva una o dos áreas, para no pisarnos en los mismos archivos. Acordado el 2026-10-14:
 
 | Área | Qué hace | Quién |
 |---|---|---|
-| **Análisis / RE** | Ghidra: límites de función, nombrar funciones, averiguar qué hace cada `sub_xxx`, mantener `config/gow.toml` | _por decidir_ |
-| **Runtime / Sistema** | Syscalls, IOP/IRX, SIF/RPC, archivos, overrides de arranque (fases 3–4) | _por decidir_ |
-| **Gráficos / Media** | GIF/GS, VIF1/VU1, IPU/vídeos, audio (fases 5–6) | _por decidir_ |
+| **Gráficos / Media** | GIF/GS, VIF1/VU1, IPU/vídeos, audio (fases 5–6), y las compilaciones pesadas | @cxldsakeb |
+| **Mando / Entrada** | `overrides/gow_pad.cpp`: mandos de PC reales, conexión en caliente, puerto 2, vibración y, más adelante, SIO2 en el IOP | @DaniSBR1 |
+| **Análisis / RE** | Ghidra: límites de función, nombrar funciones, averiguar qué hace cada `sub_xxx`, mantener `config/gow.toml` | según haga falta |
+| **Runtime / Sistema** | Syscalls, IOP/IRX, SIF/RPC, archivos, overrides de arranque (fases 3–4) | según haga falta |
+
+Quien vaya a cambiar el fork (`godofwar`) lo avisa antes, porque los dos suben a la misma rama.
 
 Colaboradores: @cxldsakeb y @DaniSBR1.
