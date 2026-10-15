@@ -56,7 +56,7 @@ Seguir el bucle de la [guía de PS2Recomp para juegos sin símbolos](https://git
 
 - [x] Ruta GIF → GS: algo aparece en pantalla (logos, pantallas 2D). **2026-10-14:** en `RelWithDebInfo` se ven la pantalla legal de Sony y la de título (logo de God of War, fondo del menú, "New Game").
 - [ ] Texto de la fuente completo. **2026-10-14:** tras el arreglo de la VU1 y del FLG 3 del GIF, el texto de los menús sale completo; falta confirmar las dos líneas grises.
-- [ ] VIF1 / VU1: los microprogramas de geometría de God of War. **Es el mayor riesgo técnico.** **2026-10-14:** el intérprete de VU1 se corrigió contra PCSX2 (fork `7eb4a1b`) y ya termina todos los microprogramas (205 000 sin atascos), pero el fondo 3D del menú sigue con triángulos enormes estirados: es el siguiente frente.
+- [ ] VIF1 / VU1: los microprogramas de geometría de God of War. **Es el mayor riesgo técnico.** **2026-10-14:** el intérprete de VU1 se corrigió contra PCSX2 (fork `7eb4a1b`) y ya termina todos los microprogramas (205 000 sin atascos). Con el DMA de la scratchpad en modo cadena (fork `86d6fb9`), las matrices ya llegan y desaparecen los triángulos basura. Comparado con el juego real, falta **Kratos** (manchas negras en su lugar) y sobran unas astillas grises y un tramado: es el siguiente frente.
 - [ ] Vídeos MPEG (IPU, con FFmpeg).
 
 **Hecho cuando:** se ve **correctamente** el menú principal (la escena 3D de Kratos y el texto) y se llega a él **sin pulsar nada**. *(2026-10-14: se llega al menú principal y al de opciones, y el texto sale completo; falta la geometría 3D del fondo. Referencia para corregirlo: PCSX2.)*
