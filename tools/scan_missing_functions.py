@@ -1,10 +1,13 @@
 """Busca funciones que Ghidra no detecta y las imprime como entradas de extra_entry_points.
 
-Dos tipos, los que causan "[guest-branch:missing-target]" en el runtime:
+Tres tipos, los que causan "[guest-branch:missing-target]" en el runtime:
   vfn_  punteros de .data/.rodata/... a .text que caen fuera de toda función del CSV y empiezan
         donde acaba otra función ("jr ra" dos instrucciones antes) o tras relleno. Son sobre todo
         métodos virtuales de C++ (vtables) y callbacks, que nadie llama directamente.
   fn_   destinos de J/JAL que caen en huecos entre funciones (código que Ghidra no analizó).
+  cfn_  punteros a .text construidos en el propio código con "lui rX, hi" + "addiu/ori rY, rX, lo"
+        (callbacks que se pasan como argumento, p. ej. el de fin de un comando asíncrono). Mismo
+        criterio que vfn_: deben empezar tras un "jr ra" o tras relleno.
 
     py -3 tools/scan_missing_functions.py              # usa config/gow_functions.csv + gow.manual.toml
 
@@ -82,11 +85,31 @@ def main():
             if lo <= target < hi and target not in starts and target not in vfn and not covered(target):
                 fn.add(target)
 
-    print("# %d vfn_ + %d fn_ nuevas" % (len(vfn), len(fn)))
+    # lui rX, hi seguido (en pocas instrucciones) de addiu/ori rY, rX, lo
+    cfn = set()
+    recent_lui = {}
+    for off in range(0, len(data), 4):
+        ins, = struct.unpack_from("<I", data, off)
+        op, rs, rt, imm = ins >> 26, (ins >> 21) & 31, (ins >> 16) & 31, ins & 0xFFFF
+        index = off // 4
+        if op == 0x0F:  # lui
+            recent_lui[rt] = (imm, index)
+            continue
+        if op in (0x09, 0x0D) and rs in recent_lui and index - recent_lui[rs][1] <= 16:  # addiu, ori
+            high = recent_lui[rs][0] << 16
+            target = (high + (imm - 0x10000 if imm & 0x8000 else imm)) & 0xFFFFFFFF if op == 0x09 else high | imm
+            if (lo < target < hi and target % 4 == 0 and target not in starts and target not in vfn
+                    and target not in fn and not covered(target)
+                    and (word(target - 8) == JR_RA or word(target - 4) == 0)):
+                cfn.add(target)
+
+    print("# %d vfn_ + %d fn_ + %d cfn_ nuevas" % (len(vfn), len(fn), len(cfn)))
     for address in sorted(vfn):
         print('  "vfn_%08x@0x%08X",' % (address, address))
     for address in sorted(fn):
         print('  "fn_%08x@0x%08X",' % (address, address))
+    for address in sorted(cfn):
+        print('  "cfn_%08x@0x%08X",' % (address, address))
 
 
 if __name__ == "__main__":
