@@ -53,6 +53,7 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
   - registra cada `heap_create` y los primeros mallocs, y avisa si se rompe la lista de libres de un heap;
   - vigila el árbol de `0x1769F8` y el pool de nodos de `0x175D88`;
   - cuando algo se rompe, imprime un **backtrace heurístico** de la pila del EE (`[gow:heap]   backtrace: … <- … <- …`): las direcciones de retorno guardadas en la pila. Con eso se sabe quién llamó a quién sin depurador.
+- **`$env:GOW_PROFILE = "1"`** activa `overrides/gow_profile.cpp`, un perfilador de muestreo: cada `GOW_PROFILE_SECONDS` (15) imprime, por hilo, qué parte del tiempo trabaja, en qué funciones (propio e inclusivo, con las `FUN_…` del juego) y las pilas más frecuentes (`GOW_PROFILE_DEPTH`, `GOW_PROFILE_FILTER=texto`). Empieza tras `GOW_PROFILE_DELAY` (20 s). Necesita el PDB (`RelWithDebInfo`). Fue lo que encontró por qué el juego iba a 1,8 FPS.
 - **`tools/`**: `elf_dis.py` (desensamblar y leer cadenas), `elf_xref.py` (quién llama a qué o quién toca una global), `irx_dis.py` (módulos del IOP, con nombres de imports) y `scan_missing_functions.py`.
 - **IOP:** el fork ya formatea los `printf` de los IRX (antes salían con `%d` literal) y avisa con `[IOP] call to 0x… did not return` cuando una llamada síncrona se corta. Para investigar RPCs sirvieron trazas locales en `iop_rpc.cpp` (`handleRpc`: SID, `fno`, datos recibidos y devueltos) y `RPC.cpp` (`pushSifRpcDebugEventLocked`); se pueden volver a añadir en local, pero no se suben.
 - Los archivos de `generated/` llevan la dirección en el nombre (`FUN_0027a6b8_0x27a6b8.cpp`) y cada instrucción en un comentario `// 0x…`.
@@ -60,6 +61,30 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 ## Estado actual
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
+
+### Traspaso para cxldsakeb: compilación completa y medir los FPS (DaniSBR1, 2026-10-15)
+
+DaniSBR1 subió el trabajo de la lentitud y **deja la compilación completa a cxldsakeb**, que tiene la CPU más rápida. Pasos, en orden:
+
+1. **Ponerse al día.** Revisar los PR de `fase5/mando` (#9) y `fase5/lentitud` (este va encima del otro). Luego:
+   ```powershell
+   git checkout main; git pull
+   git submodule sync --recursive; git submodule update --init --recursive   # el fork debe quedar en 1e3161e
+   ```
+   El fork `1e3161e` va **encima de tu `431aca1`** (TEST.ZTE), así que lo incluye. Si mergeas `fase5/kratos` después, quédate con el puntero `1e3161e` del submódulo.
+2. **Compilación completa** (una vez): `AGRESSIVE_LOGS` pasa a estar apagado, y ese `define` llega a todo el código generado.
+   ```powershell
+   .\scripts\recompile.ps1 -SyncOnly          # copia gow_profile.cpp (nuevo) y reconfigura CMake con -DPS2X_ENABLE_AGRESSIVE_LOGS=OFF
+   .\scripts\run.ps1 -Config RelWithDebInfo
+   ```
+   Para volver a tener las trazas `[gs:*]`, `[padread]`…: `.\scripts\recompile.ps1 -SyncOnly -AggressiveLogs` (otra compilación completa). El `ps2_log.txt` viejo de la raíz (~180 MB) se puede borrar.
+3. **Medir y apuntarlo en NOTES.md** (sustituir el "pendiente de medir" de la entrada del 2026-10-15):
+   ```powershell
+   $env:GOW_PAD_DEBUG = "1"; .\scripts\run.ps1 -Config RelWithDebInfo -NoBuild
+   ```
+   En el log, `[gow:pad] lectura N: X lecturas/s` son los FPS de la lógica del juego: **1,8** antes y **3,9** con el GS en paralelo (aún con `AGRESSIVE_LOGS`). Con los logs apagados debería subir más (en el perfil eran el 11 %).
+4. **Opcional, para ver qué queda:** `$env:GOW_PROFILE = "1"` (`overrides/gow_profile.cpp`; informe por hilo cada 15 s desde el segundo 20). Lo siguiente según el último perfil: el planificador del IOP (~9 %) y la VU1 (~15 %).
+5. Si algo se ve distinto en pantalla, `$env:PS2X_GS_THREADS = "0"` vuelve al rasterizador de un solo hilo para comparar.
 
 ### Reparto de trabajo (acordado el 2026-10-14)
 
@@ -73,7 +98,7 @@ Desde aquí se trabaja **en paralelo**, con objetivos distintos:
   4. vibración: raylib/GLFW no tiene vibración en escritorio, así que haría falta XInput o SDL en el runtime (fork);
   5. a largo plazo, emular el SIO2 en `ps2xIOP` para que los IRX del juego funcionen tal cual.
   Referencia: `pcsx2/SIO/Pad/` en la copia de PCSX2.
-  **Estado (2026-10-15, DaniSBR1):** punto 2 hecho (el aviso ya no sale; ver NOTES.md). `gow_pad.cpp` lee ya la entrada con raylib: mando 1 y teclado a la vez en el puerto 1, mando 2 en el puerto 2 con conexión en caliente, zona muerta radial (`GOW_PAD_DEADZONE`), gatillos analógicos y presión. Vibración con XInput hecha (mandos de Xbox; `GOW_PAD_RUMBLE_TEST=1` la prueba al arrancar). Probado con el mando de Xbox de DaniSBR1: vibra. Los toques cortos se perdían porque la lógica del juego va a ~1,8 FPS y solo lee el mando una vez por frame; ahora un hilo retiene las pulsaciones entre lecturas (ver NOTES.md) y START, ✕, △ y el stick responden en el menú. Falta que DaniSBR1 lo confirme con el mando y ajuste la zona muerta. Pendiente: vibración para DualShock 4/DualSense (órdenes HID propias) y, a largo plazo, el SIO2.
+  **Estado (2026-10-15, DaniSBR1):** punto 2 hecho (el aviso ya no sale; ver NOTES.md). `gow_pad.cpp` lee ya la entrada con raylib: mando 1 y teclado a la vez en el puerto 1, mando 2 en el puerto 2 con conexión en caliente, zona muerta radial (`GOW_PAD_DEADZONE`), gatillos analógicos y presión. Vibración con XInput hecha (mandos de Xbox; `GOW_PAD_RUMBLE_TEST=1` la prueba al arrancar). Probado con el mando de Xbox de DaniSBR1: vibra. Los toques cortos se perdían porque la lógica del juego va a ~1,8 FPS y solo lee el mando una vez por frame; ahora un hilo retiene las pulsaciones entre lecturas (ver NOTES.md) y START, ✕, △ y el stick responden en el menú. Confirmado por DaniSBR1 con el mando (2026-10-15): mando terminado, PR #9. Pendiente: vibración para DualShock 4/DualSense (órdenes HID propias) y, a largo plazo, el SIO2.
 - **Regla para no pisarse:** quien vaya a cambiar el fork (`godofwar`) lo avisa antes, porque los dos subimos a la misma rama. Si uno cambia `config/gow.manual.toml` o el fork, el otro tiene que hacer `git pull`, `git submodule update` y recompilar.
 
 ### VU1 arreglada (cxldsakeb, 2026-10-14, rama `fase5/vu1`)
@@ -122,7 +147,7 @@ Traspaso de cxldsakeb cumplido: con `main` al día, el fork en `a0e3c5f` y una r
   1. **Kratos en el menú (cxldsakeb):** es un modelo con esqueleto, así que usa otro microprograma y matrices de huesos. **Siguiente:** identificar su microprograma (el `startPc` del `MSCAL` cuando se dibuja la zona de Kratos) y aplicarle la traza de repetición de la VU1. Después, comprobar si los huesos llegan a cero (otra ruta de DMA o de la VU0) o si es un problema de transparencia o profundidad. Trazas locales que sirvieron (detalle en NOTES.md): `[gs-diag]`, `[vu-trace]`, `[vif-diag]` y `[vu1-diag]`.
   2. **Corrupción de la pila** que tapa `gow_state.cpp`: alguien escribe 2 bytes en un marco activo de la pila principal (`0x1FFEDA0`). Vigilar las escrituras a esa dirección en las macros `WRITE*` de `ps2_runtime_macros.h` (en local; obliga a una compilación completa) e imprimir el PC del que escribe.
   3. **Texto:** desde el arreglo de la VU1 y del FLG 3 sale completo. Falta confirmar si siguen las dos líneas en bloques grises.
-  4. **Lentitud:** `0x1403C8` (llamada desde `0x17A154`) recorre una lista global (`0x2CBBB0`) buscando el primer elemento con un búfer listo; huele a cola de paquetes de dibujo o DMA. Y las 27 esperas del IOP que agotan el tiempo.
+  4. **Lentitud (DaniSBR1, rama `fase5/lentitud`):** medido con `GOW_PROFILE=1`. El hilo del juego estaba ocupado el 100 %: ~76 % en el rasterizador del GS por software (dentro de `sceDmaSend`, que es lo que hay detrás de `0x17A154` → `0x1403C8`), ~12 % en la VU1 y ~5 % en `AGRESSIVE_LOGS`. Hecho: GS en paralelo por filas (fork, commit `1e3161e`, encima de `431aca1`) y `AGRESSIVE_LOGS` apagado desde los scripts (`-AggressiveLogs` para activarlo; obliga a una compilación completa). Resultado: pendiente de medir: la compilación completa la hace cxldsakeb (ver el traspaso en CLAUDE.md). Siguiente: el planificador del IOP (~9 %) y la VU1.
 - **Trazas locales útiles (no se suben):** `[run:threads]` en `ps2_runtime.cpp` (junto a `[run:tick]`: PC, estado y espera de **cada** hilo del EE, con `eeScheduler().snapshot()`); `[ee:pc0]` en `EeScheduler.cpp` (cuando un hilo salta a `pc=0`, imprime `branch_pc`: la última instrucción de salto); `[sif:dma]` en `iop_rpc.cpp` (cada copia IOP→EE); `[cdvd:read]` en `iop_cdvd.cpp`; y un override local que envuelva una función del juego (`lookupFunction` + `registerFunction`) para imprimir sus argumentos.
   - En la sesión de `R_Perm`: en `iop_cdvd.cpp` (`readSectors`: LSN y primeros bytes) y en `IopEmulator::step` (al pasar por `SMPD base 0x4C900 + offset`: argumentos de `add_file`, `find_file`, `OpenResourceFile`…). Con eso se ve qué hace un IRX sin depurador.
 - **Sesión del 2026-10-14 (DaniSBR1, rama `fase4/rpc-sonido`).** Se resolvieron cuatro bloqueos seguidos; los detalles están en `docs/NOTES.md`, en "Bloqueos" y "Funciones identificadas".
