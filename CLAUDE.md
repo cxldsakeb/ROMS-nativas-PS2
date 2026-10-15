@@ -6,7 +6,7 @@ Este archivo lo carga Claude Code automáticamente. Es el **hilo compartido** en
 
 - **Objetivo:** recompilar estáticamente God of War (PS2, 2005) a un ejecutable nativo de Windows con [PS2Recomp](https://github.com/ran-j/PS2Recomp).
 - **Submódulo `PS2Recomp/`:** desde el 2026-10-14 apunta a **nuestro fork, [DaniSBR1/PS2Recomp](https://github.com/DaniSBR1/PS2Recomp), rama `godofwar`**, que lleva arreglos del IOP que el original no tiene. Si alguien clonó antes, tiene que ejecutar `git submodule sync --recursive` y `git submodule update --init --recursive`. Sin eso, el juego se cuelga en la RPC de sonido (`0x26C0E8`).
-- **Equipo:** @cxldsakeb (dueño del repo), @DaniSBR1, @ErickFRD20. Están aprendiendo desde cero: Claude hace de guía, así que explica el porqué de las cosas y no solo el qué.
+- **Equipo:** @cxldsakeb (dueño del repo) y @DaniSBR1. Están aprendiendo desde cero: Claude hace de guía, así que explica el porqué de las cosas y no solo el qué.
 - **Idioma:** todo en español (conversación, docs, comentarios y commits). Excepción: los comentarios de código dentro del fork de PS2Recomp van en inglés, como el resto de ese proyecto, para poder proponer los arreglos al original.
 - **Repo:** privado, https://github.com/cxldsakeb/ROMS-nativas-PS2
 
@@ -60,40 +60,59 @@ tools/*.py                               análisis en Python sin Ghidra (ver too
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
 
-### Traspaso para la próxima sesión (DaniSBR1), 2026-10-14
+### Traspaso para la próxima sesión (cxldsakeb), 2026-10-14
 
-cxldsakeb lo deja aquí. **DaniSBR1 sigue desde este punto.** Pasos, en orden:
+DaniSBR1 lo deja aquí. **cxldsakeb sigue desde este punto.** Pasos, en orden:
 
-1. **Ponerse al día.** Revisar y mergear el PR de `fase4/r-perm-stream` (si no está ya), y luego:
+1. **Ponerse al día.** Revisar y mergear el PR de `fase5/primeras-imagenes`, y luego:
    ```powershell
    git checkout main; git pull
-   git submodule sync --recursive; git submodule update --init --recursive   # el fork debe quedar en a0e3c5f
+   git submodule sync --recursive; git submodule update --init --recursive   # el fork sigue en a0e3c5f (no cambió)
    ```
-2. **Recompilación COMPLETA**, no `-SyncOnly`: cambió `config/gow.manual.toml` (2 funciones nuevas) y el runtime (3 arreglos en el fork).
+2. **No hace falta recompilar el juego entero:** `config/gow.manual.toml` no cambió. Hay dos overrides nuevos (`gow_pad.cpp`, `gow_state.cpp`), así que basta con:
    ```powershell
-   .\scripts\recompile.ps1      # ~4 min, 0 errores, ~3600 avisos
-   .\scripts\run.ps1            # compila el runner (Debug) y arranca
+   .\scripts\recompile.ps1 -SyncOnly          # copia los overrides y reconfigura CMake (archivos nuevos)
+   .\scripts\run.ps1 -Config RelWithDebInfo   # Release con símbolos: va bastante más rápido que Debug
    ```
-3. **Comprobar que se reproduce.** En el log tienen que salir estas líneas:
-   - `[gow:boot] main(argc=1, argv[0]="cdrom0:\SCUS_973.99;1")`
-   - `[gow:cd] DVD de doble capa: capa 1 en el sector 2080544`
-   - los 8 `[SIF module] load-emulated … cdrom0:\…IRX;1`
-   - y, tras 1–2 min, `[run:tick]` casi siempre en `pc=0x17a154`, con `dma=` subiendo poco a poco (unos 250 → 300 en 2 min).
-   - Son normales: ~27 `[IOP] synchronous wait timed out` y `989snd Error: cause 7`.
-   - No debe salir ningún `missing-target`.
-4. **Siguiente trabajo:** el apartado **SIGUIENTE PASO CONCRETO** de abajo. Lo primero es probar `RelWithDebInfo` y **mirar la ventana del juego** (nadie la ha mirado aún).
+3. **Comprobar que se reproduce.** Sin tocar nada, la ventana pasa por: pantalla legal de Sony → título → un momento "THE DUALSHOCK®2 ... HAS BEEN REMOVED" → **menú principal con "NEW GAME"** y una escena 3D animada de fondo **deformada** (triángulos estirados con texturas reales). En el log:
+   - `[gow:pad] socket del puerto 1: 0x0` y `[gow:pad] DualShock 2 conectado en el puerto 1`
+   - **una** vez `[gow:state] TEMPORAL: ignorado un cambio a estado nulo` (normal: es el parche de `gow_state.cpp`)
+   - avisos `[VU1 reserved lower] ... instruction=0xFFFFFFF8/0xFFFFFFFB`: no son instrucciones, son abortos del `XGKICK` (ver NOTES.md)
+   - el teclado funciona como mando: flechas/WASD, X = ✕, C = ○, Z = □, V = △, Enter = START
+4. **Siguiente trabajo (objetivo de la fase 5): que el menú se vea bien.** Empezar por el punto 1 de **SIGUIENTE PASO CONCRETO** (VU1): comparar instrucción a instrucción el intérprete de VU del runtime con el de PCSX2. Material:
+   - Referencia de PCSX2 (solo lectura, sparse): `git clone --depth 1 --filter=blob:none --sparse https://github.com/pcsx2/pcsx2.git` y `git sparse-checkout set --no-cone '/pcsx2/VU*' '/pcsx2/Vif*' '/pcsx2/Gif*' '/pcsx2/GS/**' '/pcsx2/SIO/**'` (DaniSBR1 lo tiene en `C:\Users\dvind\ref\pcsx2`, fuera del repo).
+   - El volcado de la VU1 atascada (`out/logs/vu1_atasco.bin`) es local: para generarlo hay que volver a poner la traza `[vu1-diag]` al final de `VU1Interpreter::run` (`ps2_vu1_core.cpp`), que escribe código + datos + VI + VF la primera vez que un microprograma agota el presupuesto. `tools/vu_dis.py` lo desensambla.
+   - El caso estudiado está en NOTES.md (bloqueo de la VU1): el recuento `[ITOP+69].w` pasa de `0x42` a `0xC042` dentro del propio microprograma (bucle de `0x0AD0`).
+   - Cambio candidato que DaniSBR1 tiene **solo en local** en el fork: en `progressXgkick` (`ps2_vu1_core.cpp`), tratar el FLG 3 del GIFtag como IMAGE en vez de abortar (como PCSX2 en `Gif_Unit.h`). Es una línea; si se confirma, va al fork **sin** las trazas.
 
-- **Fase:** 5, primeras imágenes (la 3 y la 4 se cerraron el 2026-10-14, ver `docs/ROADMAP.md`). El juego pasa toda la inicialización, **carga `R_PERM.WAD` entero y llega a su bucle principal de frames** (envía frames al GS, cambia de framebuffer y espera la VBlank), pero va muy lento: unos pocos DMA cada pocos segundos en Debug. Aún no sabemos qué se ve en pantalla. Ver `docs/ROADMAP.md`.
+### Primeras imágenes (DaniSBR1, 2026-10-14, rama `fase5/primeras-imagenes`)
+
+Traspaso de cxldsakeb cumplido: con `main` al día, el fork en `a0e3c5f` y una recompilación completa (636 funciones añadidas, 0 errores), todo se reproduce igual (27 `synchronous wait timed out`, 0 `missing-target`, `pc=0x17a154`).
+
+**Se miró la ventana por primera vez, con `.\scripts\run.ps1 -Config RelWithDebInfo`:**
+- ✅ **Pantalla legal de Sony**, perfecta.
+- ✅ **Pantalla de título:** logo de GOD OF WAR, fondo del menú y "New Game".
+- ✅ **Mando conectado** con `overrides/gow_pad.cpp` (mando o teclado del PC: flechas/WASD, X = ✕, C = ○, Z = □, V = △, Enter = START). Para pruebas sin nadie delante: `$env:GOW_PAD_PRESS = "start@150,start@450"`.
+- ✅ **Se llega al menú principal** ("NEW GAME"), con su escena 3D animada de fondo (Kratos), pero con **la geometría deformada** (mosaico de triángulos con texturas correctas): casi seguro la VU1.
+- ⚠️ **TEMPORAL:** `overrides/gow_state.cpp` ignora un cambio a un estado nulo que, sin el parche, salta a `pc=0`. El nombre `"Animation"` aparece como `"Animao"` en un búfer de la pila principal: algo pisa 2 bytes de un marco activo. Causa sin encontrar (NOTES.md).
+- ❌ **Faltan letras en el texto** del menú, y dos líneas salen como bloques grises.
+- `RelWithDebInfo` va más rápido que Debug (`dma=453` frente a ~300 en 2 min), pero **la primera compilación tarda ~42 min** con 12 hilos. Las siguientes, si solo cambian overrides, son rápidas.
+- Para "mirar" la ventana desde un script, sin estar delante: capturarla con `PrintWindow` (`PW_RENDERFULLCONTENT`) a partir del `MainWindowHandle` del proceso. Las capturas **no se suben** (son imágenes del juego).
+
+- **Fase:** 5, primeras imágenes: **ya se ven la pantalla legal, la de título y el menú principal** (este último con la geometría 3D deformada). La 3 y la 4 se cerraron el 2026-10-14, ver `docs/ROADMAP.md`.
+- **Objetivo acordado para cerrar la fase 5:** que el **menú principal se vea correctamente** (la escena 3D de Kratos bien dibujada y el texto completo) y que se llegue a él **sin pulsar nada**. El soporte de mando "de verdad" para el port (configuración, mandos de PC) queda para más adelante; de momento basta con `gow_pad.cpp`.
+- **Referencia: PCSX2** (https://github.com/pcsx2/pcsx2, GPLv3 como PS2Recomp). Su VU (`pcsx2/VU*.cpp`, `VUops.cpp`), su VIF (`Vif_Unpack.cpp`, `Vif_Codes.cpp`), su GS (`pcsx2/GS/`) y su mando (`pcsx2/SIO/Pad/`) son la referencia para corregir el runtime. Se puede consultar y adaptar código, citando de dónde sale y respetando la licencia. El juego pasa toda la inicialización, **carga `R_PERM.WAD` entero y llega a su bucle principal de frames** (envía frames al GS, cambia de framebuffer y espera la VBlank), pero va lento: en Debug, unos pocos DMA cada pocos segundos. Ver `docs/ROADMAP.md`.
 - **Sesión del 2026-10-14 (cxldsakeb, rama `fase4/r-perm-stream`).** Cuatro bloqueos más, tres de ellos en el runtime (fork). Detalles en `docs/NOTES.md`.
   1. **El hilo principal no esperaba: moría.** En `ps2xIOP`, `WaitSema`/`WaitEventFlag` dentro de un manejador RPC (llamada síncrona, sin hilo) no bloqueaban, así que SMPD mandaba al EE el bloque anterior del disco. El stream de `R_PERM` llegaba desfasado, una cabecera basura provocaba un `memcpy` de ~200 MB y la pila se rompía. **Fork:** esas esperas ejecutan ahora los hilos del IOP hasta cumplirse.
   2. **Interrupción del GS (INTC 0).** El runtime nunca la lanzaba y el juego esperaba para siempre el `FINISH` del GS (`0x183894`). **Fork:** `EeScheduler::pollGsInterrupt`.
   3. **Pilas de interrupción encima de la pila principal.** El runtime las tomaba desde `0x2000000`, donde God of War tiene la pila de `main`. **Fork:** `SetupThread` las baja por debajo.
   4. **2 callbacks que Ghidra no ve** (punteros con `lui`+`addiu`). `tools/scan_missing_functions.py` busca ahora también esos (`cfn_`); añadidos a `config/gow.manual.toml`.
-- **Bloqueo actual (lento, no colgado):** el hilo principal pasa casi todo el tiempo en `0x17A154`, la llamada a `0x1403C8` dentro del bucle de frame. Además, en el arranque hay 27 `[IOP] synchronous wait timed out` (esperas del IOP que ningún hilo señala; cada una consume hasta 1 s de IOP).
-- **SIGUIENTE PASO CONCRETO:**
-  1. Probar `.\scripts\run.ps1 -Config RelWithDebInfo` (compila en Release con símbolos) y **mirar la ventana**: ¿sale algo en pantalla?
-  2. Ver qué hace `0x1403C8` y cuánto tarda por frame (¿VU1 por CPU?).
-  3. Averiguar qué esperas del IOP agotan el tiempo (añadir en local el SID/`fno` y el PC al aviso) y si alguna debería resolverse de otra forma.
+- **Bloqueo actual:** la escena 3D del menú principal sale con los triángulos deformados (VU1, ver el siguiente paso). Sigue además la lentitud: el hilo principal pasa casi todo el tiempo en `0x17A154` (la llamada a `0x1403C8` del bucle de frame), y en el arranque hay 27 `[IOP] synchronous wait timed out`.
+- **SIGUIENTE PASO CONCRETO** (frentes que se pueden repartir; el mando ya está):
+  1. **Geometría 3D del menú (VU1):** el fondo del menú principal se dibuja con texturas correctas pero con los triángulos deformados. **Ya medido** (ver NOTES.md, bloqueo de la VU1): el 3,7 % de los microprogramas no termina y el 0,6 % aborta el `XGKICK`. Las subidas `MPG`, `UNPACK`, `TTE` y el doble búfer coinciden con PCSX2. En el caso estudiado, la VU1 escribe sobre su propio recuento (`[ITOP+69].w`: `0x42` → `0xC042`) y entra en un bucle de -16318 vueltas. **Siguiente:** comparar instrucción a instrucción con el intérprete de VU de PCSX2 (copia en `C:\Users\dvind\ref\pcsx2`), partiendo del volcado `out/logs/vu1_atasco.bin` (código + datos + VI + VF) y de `tools/vu_dis.py`. Trazas locales que sirvieron: `[vu1-diag]` al final de `VU1Interpreter::run` (cómo termina cada programa y volcado del primer atasco), `[vif1-mpg]`/`[vif1-mscal]`/`[vif1-unpack]` en `ps2_vif1_interpreter.cpp`. Candidato a conservar: FLG 3 del GIFtag = IMAGE en `progressXgkick` (como PCSX2).
+  2. **Corrupción de la pila** que tapa `gow_state.cpp`: alguien escribe 2 bytes en un marco activo de la pila principal (`0x1FFEDA0`). Vigilar las escrituras a esa dirección en las macros `WRITE*` de `ps2_runtime_macros.h` (en local; obliga a una compilación completa) e imprimir el PC del que escribe.
+  3. **Texto incompleto (gráficos):** mirar los `[gs:*]` del dibujo del texto: subida de la textura de la fuente, `TEX0` (PSM/CLUT) y `ALPHA`/`TEST`.
+  4. **Lentitud:** `0x1403C8` (llamada desde `0x17A154`) recorre una lista global (`0x2CBBB0`) buscando el primer elemento con un búfer listo; huele a cola de paquetes de dibujo o DMA. Y las 27 esperas del IOP que agotan el tiempo.
 - **Trazas locales útiles (no se suben):** `[run:threads]` en `ps2_runtime.cpp` (junto a `[run:tick]`: PC, estado y espera de **cada** hilo del EE, con `eeScheduler().snapshot()`); `[ee:pc0]` en `EeScheduler.cpp` (cuando un hilo salta a `pc=0`, imprime `branch_pc`: la última instrucción de salto); `[sif:dma]` en `iop_rpc.cpp` (cada copia IOP→EE); `[cdvd:read]` en `iop_cdvd.cpp`; y un override local que envuelva una función del juego (`lookupFunction` + `registerFunction`) para imprimir sus argumentos.
   - En la sesión de `R_Perm`: en `iop_cdvd.cpp` (`readSectors`: LSN y primeros bytes) y en `IopEmulator::step` (al pasar por `SMPD base 0x4C900 + offset`: argumentos de `add_file`, `find_file`, `OpenResourceFile`…). Con eso se ve qué hace un IRX sin depurador.
 - **Sesión del 2026-10-14 (DaniSBR1, rama `fase4/rpc-sonido`).** Se resolvieron cuatro bloqueos seguidos; los detalles están en `docs/NOTES.md`, en "Bloqueos" y "Funciones identificadas".
@@ -115,8 +134,7 @@ cxldsakeb lo deja aquí. **DaniSBR1 sigue desde este punto.** Pasos, en orden:
   - Fork de PS2Recomp creado y submódulo apuntando a él.
 - **Pendiente:**
   - El bucle principal va muy lento (siguiente paso de arriba).
-  - Que ErickFRD20 complete SETUP y reproduzca el arranque. Ojo: necesita el `git submodule sync`.
-  - Repartir las áreas: análisis, runtime y gráficos.
+  - Repartir las áreas entre cxldsakeb y DaniSBR1 (ver `docs/ROADMAP.md`).
   - Proponer al PS2Recomp original los arreglos de "Cambios necesarios en PS2Recomp" (NOTES.md): heap y presupuesto del IOP, `printf`/`sprintf`, esperas en llamadas síncronas del IOP, interrupción del GS, pilas de interrupción, `loadModuleBuffer` desde el IOP, `SetupThread` con `argc`/`argv`, `sceCdReadDvdDualInfo` y `guestMalloc` con zona propia.
   - Revisar los tres stubs en conflicto (`StartThread`/`iWakeupThread`/`InitTLB`, ver NOTES.md).
   - Cambio pendiente de commit en el submódulo: ninguno (cxldsakeb ya es colaborador del fork y puede subir a `godofwar`). `register_functions.cpp` y los archivos copiados al runner cambian con cada sync y se ignoran (`ignore = dirty`).

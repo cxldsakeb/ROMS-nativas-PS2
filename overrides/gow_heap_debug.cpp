@@ -289,6 +289,72 @@ namespace
         g_originalTreeFind(rdram, ctx, runtime);
     }
 
+    // ── Máquina de estados de 0x180D08 (cambio de estado) ─────────────────────────────────────
+    // FUN_00180D08(máquina, estado): guarda el estado en +4 y llama a su "entrar" (vtable +0x34). Con
+    // estado = NULL lee la vtable de 0xC y salta a 0 (bloqueo de la pantalla de título tras conectar
+    // el mando). Aquí se avisa con backtrace antes de que pase.
+    constexpr uint32_t kStateSetAddr = 0x00180D08u;
+    PS2Runtime::RecompiledFunction g_originalStateSet = nullptr;
+    std::atomic<uint32_t> g_stateNullReports{0};
+
+    void stateSetProbe(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t machine = getRegU32(ctx, 4);
+        const uint32_t state = getRegU32(ctx, 5);
+        if (state == 0u && g_stateNullReports.fetch_add(1) < 4u)
+        {
+            std::cout << "[gow:heap] ESTADO NULO: máquina=" << hex32(machine)
+                      << " estado actual=" << hex32(read32(rdram, machine + 4u))
+                      << " +8=" << hex32(read32(rdram, machine + 8u)) << std::endl;
+            printGuestBacktrace(rdram, getRegU32(ctx, 29), getRegU32(ctx, 31));
+        }
+        g_originalStateSet(rdram, ctx, runtime);
+    }
+
+    // FUN_00180E90(máquina, ruta, ?): cambia de estado siguiendo una ruta con '/' (con '/' inicial
+    // parte de la raíz, en máquina+8). FUN_0017FD10(estado, nombre) busca el hijo con ese nombre.
+    constexpr uint32_t kStatePathAddr = 0x00180E90u;
+    constexpr uint32_t kStateFindChildAddr = 0x0017FD10u;
+    PS2Runtime::RecompiledFunction g_originalStatePath = nullptr;
+    PS2Runtime::RecompiledFunction g_originalStateFindChild = nullptr;
+    std::atomic<uint32_t> g_statePathLogs{0};
+
+    void statePathProbe(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const std::string path = readCString(rdram, getRegU32(ctx, 5), 96);
+        const bool interesting = path.find("Anim") != std::string::npos || path.find("Navig") != std::string::npos;
+        if (g_statePathLogs.fetch_add(1) < 40u || interesting)
+        {
+            std::cout << "[gow:heap] cambio de estado: \"" << path << "\" en " << hex32(getRegU32(ctx, 5))
+                      << " (desde " << hex32(getRegU32(ctx, 31)) << ")" << std::endl;
+        }
+        g_originalStatePath(rdram, ctx, runtime);
+    }
+
+    void stateFindChildProbe(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t parent = getRegU32(ctx, 4);
+        const uint32_t name = getRegU32(ctx, 5);
+        const std::string wanted = readCString(rdram, name, 64);
+        g_originalStateFindChild(rdram, ctx, runtime);
+        if (getRegU32(ctx, 2) == 0u)
+        {
+            std::cout << "[gow:heap] ESTADO NO ENCONTRADO: \"" << wanted << "\" en " << hex32(name) << " bajo " << hex32(parent) << std::endl;
+            if (wanted.rfind("Anim", 0) == 0 && wanted != "Animation")
+            {
+                // Volcar la zona del nombre corrupto y la pila de quien lo pidió
+                std::cout << "[gow:heap]   bytes en " << hex32(name & ~0xFu) << ":";
+                for (uint32_t i = 0; i < 48u; ++i)
+                {
+                    const uint8_t b = rdram[((name & ~0xFu) + i) & PS2_RAM_MASK];
+                    std::cout << ' ' << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b);
+                }
+                std::cout << std::dec << std::setfill(' ') << std::endl;
+                printGuestBacktrace(rdram, getRegU32(ctx, 29), getRegU32(ctx, 31));
+            }
+        }
+    }
+
     void applyHeapDebug(PS2Runtime &runtime)
     {
         const char *flag = std::getenv("GOW_HEAP_DEBUG");
@@ -313,6 +379,18 @@ namespace
             g_originalTreeNodeAlloc = runtime.lookupFunction(kTreeNodeAllocAddr);
             runtime.registerFunction(kTreeFindAddr, &treeFindProbe);
             runtime.registerFunction(kTreeNodeAllocAddr, &treeNodeAllocProbe);
+        }
+        if (runtime.hasFunction(kStateSetAddr))
+        {
+            g_originalStateSet = runtime.lookupFunction(kStateSetAddr);
+            runtime.registerFunction(kStateSetAddr, &stateSetProbe);
+        }
+        if (runtime.hasFunction(kStatePathAddr) && runtime.hasFunction(kStateFindChildAddr))
+        {
+            g_originalStatePath = runtime.lookupFunction(kStatePathAddr);
+            g_originalStateFindChild = runtime.lookupFunction(kStateFindChildAddr);
+            runtime.registerFunction(kStatePathAddr, &statePathProbe);
+            runtime.registerFunction(kStateFindChildAddr, &stateFindChildProbe);
         }
         std::cout << "[gow:heap] diagnóstico del heap activo (GOW_HEAP_DEBUG=1)" << std::endl;
     }

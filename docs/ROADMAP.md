@@ -54,15 +54,17 @@ Seguir el bucle de la [guía de PS2Recomp para juegos sin símbolos](https://git
 
 ### Fase 5: Primeras imágenes
 
-- [ ] Ruta GIF → GS: algo aparece en pantalla (logos, pantallas 2D).
-- [ ] VIF1 / VU1: los microprogramas de geometría de God of War. **Es el mayor riesgo técnico.**
+- [x] Ruta GIF → GS: algo aparece en pantalla (logos, pantallas 2D). **2026-10-14:** en `RelWithDebInfo` se ven la pantalla legal de Sony y la de título (logo de God of War, fondo del menú, "New Game").
+- [ ] Texto de la fuente completo: faltan letras y dos líneas salen como bloques (¿texturas o CLUT de la fuente en el GS?).
+- [ ] VIF1 / VU1: los microprogramas de geometría de God of War. **Es el mayor riesgo técnico.** **2026-10-14:** la escena 3D del menú principal (Kratos) se dibuja con texturas correctas pero con los triángulos deformados: es el siguiente frente.
 - [ ] Vídeos MPEG (IPU, con FFmpeg).
 
-**Hecho cuando:** se ve el menú principal.
+**Hecho cuando:** se ve **correctamente** el menú principal (la escena 3D de Kratos y el texto) y se llega a él **sin pulsar nada**. *(2026-10-14: se llega al menú principal con "NEW GAME"; faltan la geometría 3D del fondo (VU1) y letras del texto. Referencia para corregirlo: PCSX2.)*
 
 ### Fase 6: Hacia jugable
 
-- [ ] Mando (pad), tarjeta de memoria (guardar y cargar) y audio (SPU2/libsd).
+- [x] Mando (pad), de forma TEMPORAL: `overrides/gow_pad.cpp` conecta el mando o el teclado del PC sustituyendo 4 funciones de la librería del DualShock (sin presión ni vibración; la solución completa sería emular el SIO2 en el IOP). Antes bloqueaba: La pantalla de título pide "PLEASE INSERT A DUALSHOCK®2 ANALOG CONTROLLER INTO CONTROLLER PORT 1". El juego usa su propio driver en el IOP (`DBCMAN`/`DS2U_D`, RPC `0x80001300`/`0x8000131C`…).
+- [ ] Tarjeta de memoria (guardar y cargar) y audio (SPU2/libsd).
 - [ ] Rendimiento: pasar de las rutas de VU/GS por CPU a algo más rápido.
 
 **Hecho cuando:** se puede jugar el primer nivel (el barco) de principio a fin.
@@ -73,7 +75,7 @@ Resolución nativa, 60 FPS, configuración de controles y el resto de lo que hac
 
 ## Reparto propuesto
 
-Al principio es mejor que cada uno tenga **un área**, para no pisarnos en los mismos archivos:
+Somos dos, así que cada uno puede llevar una o dos áreas, para no pisarnos en los mismos archivos:
 
 | Área | Qué hace | Quién |
 |---|---|---|
@@ -81,4 +83,4 @@ Al principio es mejor que cada uno tenga **un área**, para no pisarnos en los m
 | **Runtime / Sistema** | Syscalls, IOP/IRX, SIF/RPC, archivos, overrides de arranque (fases 3–4) | _por decidir_ |
 | **Gráficos / Media** | GIF/GS, VIF1/VU1, IPU/vídeos, audio (fases 5–6) | _por decidir_ |
 
-Colaboradores: @cxldsakeb, @DaniSBR1, @ErickFRD20. En la fase 0 todos hacen lo mismo; el reparto empieza a contar en la fase 1.
+Colaboradores: @cxldsakeb y @DaniSBR1.
