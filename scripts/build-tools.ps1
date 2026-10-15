@@ -4,9 +4,15 @@
 
 .PARAMETER Generator
     Generador de CMake. Por defecto VS 2022; cámbialo si usas otra versión de Visual Studio.
+
+.PARAMETER AggressiveLogs
+    Activa AGRESSIVE_LOGS del runtime (desactivado por defecto): cada función del juego escribe su
+    entrada y salida en ps2_log.txt y vacía el archivo en cada llamada (~11 % del tiempo y ~180 MB
+    por arranque), y salen las trazas [gs:*], [padread]... Cambiarlo obliga a una compilación completa.
 #>
 param(
-    [string]$Generator = 'Visual Studio 17 2022'
+    [string]$Generator = 'Visual Studio 17 2022',
+    [switch]$AggressiveLogs
 )
 . "$PSScriptRoot\_common.ps1"
 
@@ -20,7 +26,8 @@ if (-not (Test-Path (Join-Path $RecompDir 'CMakeLists.txt'))) {
 
 Invoke-Native $cmake @(
     '-S', $RecompDir, '-B', $BuildDir, '-G', $Generator, '-A', 'x64',
-    '-DPS2X_BUILD_TEST=OFF', '-DPS2X_BUILD_STUDIO=OFF'
+    '-DPS2X_BUILD_TEST=OFF', '-DPS2X_BUILD_STUDIO=OFF',
+    (Get-AggressiveLogsDefine $AggressiveLogs)
 )
 Invoke-Native $cmake @('--build', $BuildDir, '--config', 'Release', '--target', 'ps2_analyzer', 'ps2_recomp', '--parallel')
 
