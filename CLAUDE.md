@@ -110,7 +110,7 @@ Traspaso de DaniSBR1 cumplido: `main` al día y `-SyncOnly`. La primera compilac
 - **Resultado:** 205 000 microprogramas sin un solo atasco (antes, el 3,7 %), y el texto de los menús sale completo. El menú principal y el de opciones se manejan con el teclado.
 - **Sigue mal:** el fondo 3D, con triángulos enormes estirados hasta los bordes. Es la primera fila de "Bloqueos" en NOTES.md.
 - **Para reproducirlo:** `git pull`, `git submodule sync --recursive` y `git submodule update --init --recursive` (el fork debe quedar en `7eb4a1b`). Luego `.\scripts\run.ps1 -Config RelWithDebInfo`. Solo cambió el runtime: no hace falta `recompile.ps1`.
-- **Copia de PCSX2 de cxldsakeb:** `C:\Users\jose1\ref\pcsx2`. La de DaniSBR1 está en `C:\Users\dvind\ref\pcsx2`. Desde esta sesión el sparse checkout incluye también `/pcsx2/x86/microVU*`, `/pcsx2/Dmac.*`, `/pcsx2/Hw*` y `/pcsx2/SPR.*` (`git sparse-checkout add …`).
+- **Copia de PCSX2:** cada uno la tiene en `%USERPROFILE%\ref\pcsx2`. Desde esta sesión el sparse checkout incluye también `/pcsx2/x86/microVU*`, `/pcsx2/Dmac.*`, `/pcsx2/Hw*` y `/pcsx2/SPR.*` (`git sparse-checkout add …`).
 
 ### Matrices a cero: DMA de la scratchpad (cxldsakeb, 2026-10-14, rama `fase5/geometria`)
 

@@ -4,7 +4,7 @@ Proyecto para recompilar estáticamente **God of War (PS2, 2005)** a un ejecutab
 
 El código MIPS del juego se traduce a C++, se compila con un runtime que emula el resto del hardware de la PS2 y se ejecuta como programa de Windows, sin emulador.
 
-> **Estado:** fase 0, montando el entorno. Ver [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Estado:** fase 5, primeras imágenes. El juego arranca desde su propia ISO, carga sus datos, llega al menú principal y se maneja con mando o teclado; falta que la escena 3D del menú se dibuje bien. Ver [docs/ROADMAP.md](docs/ROADMAP.md) y la bitácora técnica en [docs/NOTES.md](docs/NOTES.md).
 
 ## ⚠️ Regla número uno
 
@@ -46,6 +46,16 @@ out/            [local, ignorado] builds y logs
 4. **Los parches temporales** (`ret0`/`ret1`) llevan un comentario `TEMPORAL` y una fila en NOTES.md. Hay que convertirlos en implementaciones reales antes de dar una fase por terminada.
 5. **Cambios en PS2Recomp:** no se edita el submódulo a lo loco. Los arreglos al runtime van a nuestro fork (`DaniSBR1/PS2Recomp`, rama `godofwar`), con un commit propio dentro de `PS2Recomp/`, y luego se actualiza el puntero del submódulo en este repo. Los que sirvan para todos los juegos se proponen al proyecto original.
 
+## Créditos
+
+- [**PS2Recomp**](https://github.com/ran-j/PS2Recomp), de ran-j y colaboradores: el recompilador y el runtime en los que se basa todo (GPLv3). Usamos un fork con nuestros arreglos: [DaniSBR1/PS2Recomp](https://github.com/DaniSBR1/PS2Recomp), rama `godofwar`.
+- [**PCSX2**](https://github.com/PCSX2/pcsx2): referencia para corregir la VU, el VIF, el GS, la DMA y el mando del runtime (GPLv3+). Cada arreglo adaptado cita el archivo de origen.
+- [**KIexster/god-of-war-recomp**](https://github.com/KIexster/god-of-war-recomp): otro port de God of War con PS2Recomp (GPLv3). De su investigación y sus parches salen arreglos de la FPU, la VU0 en modo macro, las instrucciones MMI y el dispatcher del EE, además de nombres de funciones. Lo que adaptamos lo cita en el código y en [docs/NOTES.md](docs/NOTES.md).
+- **Fork de Shadow of the Colossus** de Taylor N. Albarnaz / [LightVelox](https://github.com/LightVelox/PS2Recomp): origen de varios de esos arreglos del EE (GPLv3), según cita KIexster.
+- [**PS2Tek**](https://psi-rockin.github.io/ps2tek/): documentación del hardware.
+
 ## Licencia
 
-PS2Recomp es GPLv3; el código de este repo que se enlaza con él también lo es. God of War es propiedad de Sony Interactive Entertainment. Este proyecto no contiene ni distribuye ningún archivo del juego.
+El código de este repo se publica bajo la **GPLv3** ([LICENSE](LICENSE)), igual que PS2Recomp, con el que se enlaza.
+
+*God of War* es © Sony Interactive Entertainment / Santa Monica Studio. Este proyecto no está afiliado a Sony ni cuenta con su respaldo, y no contiene ni distribuye ningún archivo del juego: hace falta una copia legal propia.
