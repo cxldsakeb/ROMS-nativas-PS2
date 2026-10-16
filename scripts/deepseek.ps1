@@ -66,7 +66,7 @@ foreach ($a in $Archivos) {
 }
 
 $name = [IO.Path]::GetFileNameWithoutExtension($Tarea)
-$work = Join-Path $workRoot ("{0}-{1:yyyyMMdd-HHmmss}" -f $name, (Get-Date))
+$work = Join-Path $workRoot ("{0}-{1:yyyyMMdd-HHmmss-fff}" -f $name, (Get-Date))
 New-Item -ItemType Directory -Force $work | Out-Null
 Copy-Item $Tarea (Join-Path $work 'TAREA.md')
 foreach ($a in $Archivos) { Copy-Item $a $work -Recurse }
@@ -78,8 +78,11 @@ $mensaje = 'Haz la tarea descrita en TAREA.md (adjunto). Los archivos de entrada
 $argList = "run `"$mensaje`" -m $Modelo --agent plan --dir `"$work`" -f `"$(Join-Path $work 'TAREA.md')`""
 Write-Host "DeepSeek trabajando en $work ..."
 $t0 = Get-Date
+# Entrada vacía: OpenCode añade al mensaje lo que llegue por stdin, y en un Start-Job esa entrada nunca se cierra
+$vacio = Join-Path $work 'stdin-vacio.txt'
+New-Item -ItemType File $vacio | Out-Null
 $p = Start-Process -FilePath $opencode.Source -ArgumentList $argList -WorkingDirectory $work -NoNewWindow -Wait -PassThru `
-    -RedirectStandardOutput $salida -RedirectStandardError $progreso
+    -RedirectStandardInput $vacio -RedirectStandardOutput $salida -RedirectStandardError $progreso
 $secs = [int]((Get-Date) - $t0).TotalSeconds
 if ($p.ExitCode -ne 0 -or (Get-Item $salida).Length -eq 0) {
     throw "OpenCode terminó con código $($p.ExitCode) en $secs s. Mira $progreso."
