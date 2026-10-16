@@ -90,5 +90,6 @@ Los cambios manuales a la config **no** se hacen en `gow.toml`, sino en `config/
 - **PCSX2** (con su debugger): ejecuta el juego real, pon breakpoints en direcciones y mira qué devuelve una función. Es la forma más rápida de saber cómo *debería* comportarse algo que en el port falla.
 - **ripgrep** (`winget install BurntSushi.ripgrep.MSVC`): sirve para buscar direcciones en `generated/`, que tiene miles de archivos.
 - **Python 3 + `capstone` + `pyelftools`** (`py -3 -m pip install capstone pyelftools`): para los scripts de `tools/` (ver `tools/README.md`).
+- **OpenCode** (`npm install -g opencode-ai`, necesita Node.js): para encargar a DeepSeek, gratis, tareas de lectura de mucho volumen con `scripts/deepseek.ps1`. Solo material público; ver "Tareas para DeepSeek" en `CLAUDE.md`.
 - **Discord de PS2Recomp**: https://discord.gg/JQ8mawxUEf
 - **PS2Tek** (documentación del hardware): https://psi-rockin.github.io/ps2tek/
