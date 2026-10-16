@@ -21,10 +21,17 @@
 // Las funciones de Windows se cargan con GetProcAddress: <windows.h> choca con raylib, y en la unity
 // build ese choque llegaría a otros overrides.
 //
+// Además, siempre activo: avisa al recuadro de rendimiento del runtime (F10) de cada frame del juego.
+// God of War no alterna DISPFB (copia cada frame terminado en un único búfer de pantalla), así que
+// desde fuera no se ve cuándo acaba un frame. FUN_0017C130 (actualizar un puerto del mando) se llama
+// una vez por frame y por puerto: cada llamada del puerto 1 cuenta como un frame.
+//
 // [DaniSBR1] DIAGNÓSTICO. No cambia el comportamiento del juego (solo lo frena un poco al muestrear).
 
 #include "game_overrides.h"
+#include "ps2_perf_overlay.h"
 #include "ps2_runtime.h"
+#include "ps2_runtime_macros.h"
 
 #include <algorithm>
 #include <atomic>
@@ -507,9 +514,26 @@ namespace
         }
     }
 
+    // ── Frames del juego para el recuadro de rendimiento (F10) ─────────────────────────────────
+
+    constexpr uint32_t kProfPadUpdateAddr = 0x0017C130u; // FUN_0017C130(estado del puerto)
+    constexpr uint32_t kProfPadPort1State = 0x002FD9C0u; // estado del puerto 1 (0x1C0 bytes por puerto)
+    PS2Runtime::RecompiledFunction g_profOriginalPadUpdate = nullptr;
+
+    void profPadUpdate(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (getRegU32(ctx, 4) == kProfPadPort1State)
+            ps2_perf_overlay::noteGameFrame();
+        g_profOriginalPadUpdate(rdram, ctx, runtime);
+    }
+
     void applyProfile(PS2Runtime &runtime)
     {
-        (void)runtime;
+        if (runtime.hasFunction(kProfPadUpdateAddr))
+        {
+            g_profOriginalPadUpdate = runtime.lookupFunction(kProfPadUpdateAddr);
+            runtime.registerFunction(kProfPadUpdateAddr, &profPadUpdate);
+        }
         const char *enabled = std::getenv("GOW_PROFILE");
         if (enabled == nullptr || enabled[0] != '1')
             return;

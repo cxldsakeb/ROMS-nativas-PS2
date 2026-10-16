@@ -72,6 +72,12 @@ Todo lo que averigüemos del juego se apunta aquí: una sola fuente de verdad pa
 - **Con los arreglos de KIexster (fork `2fa41fb` + `ed11610`), la lógica baja a 1,8 FPS** con la misma prueba. Sin medir aún por qué. Lo más probable es que ahora Kratos se dibuje: ocupa media pantalla con triángulos grandes, y el rasterizador por CPU ya era el ~76 % del tiempo. También puede pesar la FPU nueva, que comprueba la saturación en cada operación. Para saberlo: `GOW_PROFILE=1`. KIexster va a 12–25 FPS gracias a su renderizador por OpenGL y a la VU1 compilada (parches `gs-opengl`, `vu1-compiled`, `vu1-thread`, `gs-front-thread`).
 - Siguiente candidato (~9 % del hilo del juego): el planificador del IOP (`IopKernel::beginNextReady`/`nextWakeCycle`) recorre su `std::map` de hilos tres veces en **cada** punto de control del EE, aunque no haya ninguno listo. Arreglo posible: guardar el próximo despertar y una versión del estado (los hilos cambian de estado en 19 sitios de `iop_kernel.cpp`, más las colas de DMA, callbacks y timers). Después, el intérprete de la VU1 (~15 %).
 
+**2026-10-15 (DaniSBR1, rama `perf/fps-overlay`): recuadro de rendimiento (F10) y qué mide cada cifra.** Con `main` en `a30b79e` (fork `ed11610`), compilación completa en 50 min en el PC de DaniSBR1 (12 hilos), sin errores; se reproduce lo de cxldsakeb (Kratos blanco en el menú, `gow_state.cpp` sin actuar, 0 `missing-target`).
+
+- **God of War no alterna `DISPFB`**: muestra siempre el mismo búfer (`FBP 208`) y copia en él cada frame terminado. Contar cambios de `DISPFB` (lo que hace PCSX2) da 0, así que el runtime expone `ps2_perf_overlay::noteGameFrame()` y `gow_profile.cpp` lo llama en cada `FUN_0017C130` del puerto 1 (una vez por frame).
+- **Los VBlank del runtime van en tiempo emulado** (ciclos del EE, `EeScheduler`), no en tiempo real: salen **1,4–1,6 VBlank/s**, igual que los frames del juego. O sea, la máquina emulada corre al **~2,5 % de la velocidad real** y el juego hace un frame por VBlank. Para llegar a 30 FPS, el EE emulado (con el GS y la VU1 que se ejecutan dentro de él) tiene que ir ~20 veces más rápido.
+- Medido en el menú con la build de `ed11610`: **1,5 FPS** en el PC de DaniSBR1 (cxldsakeb midió 1,8 en el suyo; antes de los arreglos del EE eran 5,5).
+
 ## Funciones identificadas
 
 Dirección = inicio de la función en el ELF de referencia.
