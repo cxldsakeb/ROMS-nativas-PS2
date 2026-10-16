@@ -22,23 +22,25 @@ Este archivo lo carga Claude Code automáticamente. Es el **hilo compartido** en
 ## Estructura y flujo
 
 ```
-scripts/extract-iso.ps1 -IsoPath <iso>   ISO → game/disc/ (+ game/elf-name.txt, imprime el SHA1)
+scripts/extract-iso.ps1 -IsoPath <iso>   ISO → game/disc/ con .disc_layout e IOP_MOD/ (tools/iso_extract.py; imprime el SHA1)
 scripts/build-tools.ps1                  compila ps2_analyzer y ps2_recomp (Release, VS 2022)
-scripts/ghidra-analyze.ps1 [-Reanalyze]  Ghidra headless (r5900) → config/gow.toml + gow_functions.csv (~1 min)
-scripts/recompile.ps1 [-SyncOnly]        gow.toml + gow.manual.toml → out/gow.effective.toml → generated/ → runner; reconfigura CMake
+scripts/recompile.ps1 [-SyncOnly]        config/recomp.template.toml + funcmap.csv → out/gow.effective.toml → generated/ → runner; reconfigura CMake
 scripts/run.ps1 [-Config] [-NoBuild]     compila ps2EntryRunner y arranca; log en out/logs/
 scripts/deepseek.ps1 -Tarea -Archivos    tarea de solo lectura para DeepSeek → %TEMP%\gow-deepseek\ (ver "Tareas para DeepSeek")
+tools/iso_extract.py, tools/iop, tools/vu1   extractor del disco y generadores del IOP y la VU1 nativos (de Waffle565, vía KIexster)
 tools/*.py                               análisis en Python sin Ghidra (ver tools/README.md)
 ```
 
-- `config/gow.toml` y `config/gow_functions.csv` salen del export de Ghidra y **no se editan a mano**. Los cambios manuales (stubs, entry points, MMIO, parches) van en `config/gow.manual.toml`. Los tres archivos se suben al repo.
-- **Después de cada export de Ghidra, ejecuta `py -3 tools/scan_missing_functions.py`.** Ghidra no ve las funciones que solo se llaman por puntero (métodos virtuales de C++) ni algunas que están en huecos entre funciones. Hoy hay 634 añadidas a mano en `gow.manual.toml` (`vfn_…`, `fn_…`). Si el escáner saca nuevas, van ahí. Cada función que falte acaba en `[guest-branch:missing-target]`.
-- Ghidra 12.1.4 + extensión ghidra-emotionengine-reloaded (procesador `r5900:LE:32:default`) + JDK 21 (también vale el 23, con `$env:JAVA_HOME`). El proyecto vive en `ghidra/` (ignorado). El export escribe rutas absolutas en `gow.toml`: no las subas (`git restore config/gow.toml`).
+- **Desde el 2026-10-15 la base es el runtime de Waffle565** (ver "Estado actual"). La configuración del recompilador es la de KIexster: `config/funcmap.csv` (6 414 funciones, nombres `sub_XXXXXXXX`) y `config/recomp.template.toml` (stubs, entry points y la tabla `[mmio]` que convierte accesos a registros del hardware en llamadas nativas). Los cambios se hacen ahí, a mano.
+- **Lo anterior queda como referencia, sin compilarse:** `config/anterior/` (el export de Ghidra y `gow.manual.toml`, con sus 634 funciones añadidas) y `overrides/anterior/` (nuestros overrides). `scripts/ghidra-analyze.ps1` y `tools/scan_missing_functions.py` siguen funcionando, pero ya no forman parte del flujo.
+- **IOP y VU1 nativos (opcionales, la gran ganancia de velocidad):** se generan a partir de datos del juego capturados en local (regla 1: nunca se suben).
+  - IOP: ejecuta una vez con `$env:PS2X_IOP_DUMP_MODULES = '<carpeta>'` y luego `recompile.ps1` con `$env:GOW_IOP_MODULOS = '<carpeta>'`.
+  - VU1: crea la carpeta y ejecuta con `$env:GOW_VU1_CAPTURA = '<carpeta>'` (sin la carpeta creada no guarda nada); luego `recompile.ps1` con `$env:GOW_VU1_MICROCODIGO = '<carpeta>'`.
 - **Al copiar overrides a mano, actualiza su fecha** (`(Get-Item $destino).LastWriteTime = Get-Date`): `Copy-Item` conserva la del original y, si se editó durante un build, MSBuild no lo recompila.
-- Tiempos: un ciclo completo (recompilar + runner Debug + arrancar) tarda 7–10 min con 32 hilos y unos 20 con 12. Si solo cambian overrides, basta con copiarlos (`Copy-Item overrides\*.cpp PS2Recomp\ps2xRuntime\src\runner\`) y compilar: 1–2 min. `recompile.ps1 -SyncOnly` también copia los 31 000 archivos generados y puede tardar hasta 8 min.
-- Los parches específicos del juego van en `overrides/*.cpp`, con `PS2_REGISTER_GAME_OVERRIDE`. Un archivo por área: `gow_memory`, `gow_boot`, `gow_cd`, `gow_iop`, `gow_heap_debug`…
+- Si solo cambian overrides, basta con `recompile.ps1 -SyncOnly` y compilar.
+- Los parches específicos del juego van en `overrides/*.cpp` (con sus cabeceras `*.h`, que también se copian al runner), con `PS2_REGISTER_GAME_OVERRIDE`. Hoy hay uno, `gow_overrides.cpp`, de KIexster.
 - **Unity build:** CMake junta los `.cpp` del runner en bloques (`unity_N_cxx.cxx`), así que varios overrides comparten unidad de compilación. Usa nombres con prefijo por archivo (`kIop…`, `g_iop…`), y comprueba que `PS2_REGISTER_GAME_OVERRIDE` no cae en la misma línea que en otro override: la macro usa `__LINE__` para sus nombres.
-- El runtime toma como `cdrom0:` la carpeta donde está el ELF (`game/disc/`), y la ISO completa como imagen de CD (`game/iso-path.txt`, ver `gow_overrides.cpp`).
+- El juego lee sus datos de los archivos extraídos junto al ELF (`game/disc/`), cada uno en su sector original según `game/disc/.disc_layout`. Si falta, vuelve a ejecutar `extract-iso.ps1`.
 - Guía de depuración de PS2Recomp para juegos sin símbolos: el wiki de PS2Recomp, página "PS2Recomp Stripped Game Walkthrough". El bucle es: ejecutar, arreglar el **primer** bloqueo del log y repetir.
 - Los scripts están en PowerShell 5.1 y se guardan en UTF-8 **con BOM**; sin él, los acentos se rompen.
 - Si VS Code tiene la extensión C/C++, excluye `generated/` y `PS2Recomp/ps2xRuntime/src/runner/` en `.vscode/settings.json` (`C_Cpp.files.exclude`). Si no, la indexación bloquea archivos y `recompile.ps1` falla al borrarlos.
@@ -77,6 +79,15 @@ Desde el 2026-10-15 usamos **DeepSeek V4.1 Flash, gratis en OpenCode**, como ayu
 ## Estado actual
 
 > Actualizar esta sección al cerrar cada hito, para que la vean las sesiones de todos.
+
+### GoW1 jugable: base de Waffle565 (cxldsakeb, 2026-10-15, rama `fase5/base-waffle`)
+
+- **El runtime pasa a ser el de [Waffle565/God-Of-War-Native-Port](https://github.com/Waffle565/God-Of-War-Native-Port)** (rama `runtime`, GPL-3.0), montado como hace KIexster. **Fork `godofwar` en `083a286`**: `c5a9d02` + sus 7 parches + `ReleaseMode` con las opciones de Release también en `RelWithDebInfo` (sin `/GL`/`/LTCG`) + `.gitignore` del IOP nativo generado. El merge conserva nuestra historia hasta `ed11610`.
+- **Configuración y overrides de KIexster** (`config/funcmap.csv`, `config/recomp.template.toml`, `overrides/gow_overrides.cpp` + cabeceras). Lo nuestro queda en `config/anterior/` y `overrides/anterior/`.
+- **Resultado** (compilación de KIexster en `D:\gowport-kx`, equivalente archivo por archivo a la USA de Waffle565): menú, vídeos con sonido, partida a **53–60 FPS** con VU1 e IOP nativos, combate, HUD, DualSense, guardar y cargar. Dos fallos abiertos en NOTES.md (parada tras formatear la tarjeta; algunos sonidos de golpes).
+- **Para reproducirlo (todos):** `git pull`, `git submodule sync --recursive`, `git submodule update --init --recursive`; `.\scripts\build-tools.ps1`; **`.\scripts\extract-iso.ps1` otra vez** (formato nuevo con `.disc_layout`); `.\scripts\recompile.ps1`; `.\scripts\run.ps1 -Config RelWithDebInfo`; y luego la VU1/IOP nativos (`docs/SETUP.md`, 7b). **Los scripts adaptados no se han probado aún de principio a fin en este repo** (sí el flujo de KIexster en el que se basan): si algo falla, apúntalo en NOTES.md.
+- **Licencias:** su `runtime` es GPL-3.0; su `main` no tiene licencia, así que de ahí solo usamos lo que KIexster redistribuye con permiso del autor. Pedido en [su issue #2](https://github.com/Waffle565/God-Of-War-Native-Port/issues/2).
+- **Siguiente:** God of War II en un repo aparte, sobre esta misma base.
 
 ### La intro se reproduce con el runtime de KIexster (cxldsakeb, 2026-10-15, rama `fase5/fmv`)
 

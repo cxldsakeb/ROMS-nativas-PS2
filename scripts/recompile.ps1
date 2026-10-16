@@ -1,13 +1,17 @@
 ﻿<#
 .SYNOPSIS
-    Recompila el ELF del juego a C++ usando config/gow.toml y copia el resultado al runner de PS2Recomp.
+    Recompila el ELF del juego a C++ y lo copia, con los overrides, al runner de PS2Recomp.
 
 .DESCRIPTION
-    1. Normaliza las rutas del TOML a rutas relativas al repo (el export de Ghidra las escribe absolutas).
-    2. Mezcla config/gow.toml (export de Ghidra) + config/gow.manual.toml -> out/gow.effective.toml
+    Flujo de la base de Waffle565 (vía KIexster/god-of-war-recomp, ver docs/KIEXSTER.md):
+    1. Rellena config/recomp.template.toml (@ELF@, @MAP@, @OUT@) -> out/gow.effective.toml
        y ejecuta ps2_recomp con él -> generated/
-    3. Copia generated/*.cpp + overrides/*.cpp a PS2Recomp/ps2xRuntime/src/runner/
-       y generated/*.h a PS2Recomp/ps2xRuntime/include/
+    2. IOP nativo (opcional): si $env:GOW_IOP_MODULOS apunta a una carpeta con modules.txt (sale de una
+       ejecución con $env:PS2X_IOP_DUMP_MODULES), tools/iop/iopn_gen.py compila los IRX a C++ dentro de
+       PS2Recomp/ps2xIOP/src/native (ignorado por git: son datos derivados del juego).
+    3. Copia generated/* + overrides/*.cpp + overrides/*.h a PS2Recomp/ps2xRuntime/src/runner/
+    4. Reconfigura CMake. VU1 nativa (opcional): si $env:GOW_VU1_MICROCODIGO apunta a una carpeta con
+       micromemorias capturadas con $env:GOW_VU1_CAPTURA, CMake genera y compila la VU1 nativa.
 
 .PARAMETER SyncOnly
     No recompila: solo vuelve a copiar generated/ y overrides/ al runner (útil tras editar un override).
@@ -23,44 +27,21 @@ param(
 . "$PSScriptRoot\_common.ps1"
 
 $elfPath = Get-GameElfPath
-$elfName = Split-Path $elfPath -Leaf
+function ConvertTo-ForwardSlash([string]$Path) { return $Path -replace '\\', '/' }
 
 if (-not $SyncOnly) {
     $recomp = Join-Path $BuildDir 'ps2xRecomp\Release\ps2_recomp.exe'
     if (-not (Test-Path $recomp)) { throw 'Falta ps2_recomp.exe. Ejecuta primero .\scripts\build-tools.ps1' }
-    if (-not (Test-Path $ConfigToml)) { throw "Falta $ConfigToml. Genéralo con Ghidra (docs/SETUP.md, paso 5)." }
 
-    # Rutas relativas al repo para que el mismo TOML funcione en el PC de todos
-    $toml = Get-Content $ConfigToml -Raw
-    $toml = $toml -replace '(?m)^input\s*=.*$', "input = `"game/disc/$elfName`""
-    $toml = $toml -replace '(?m)^output\s*=.*$', 'output = "generated"'
-    # Sin CSV (TOML sacado de ps2_analyzer) el recompilador usa sus propias heurísticas
-    $csvValue = if (Test-Path (Join-Path $RepoRoot 'config\gow_functions.csv')) { 'config/gow_functions.csv' } else { '' }
-    $toml = $toml -replace '(?m)^ghidra_output\s*=.*$', "ghidra_output = `"$csvValue`""
-    Write-Utf8NoBom $ConfigToml $toml
+    # ps2_recomp no abre rutas con caracteres no ASCII (acentos en la carpeta del repo, por ejemplo)
+    if ("$RepoRoot" -match '[^\x00-\x7F]') { throw "La ruta del repo tiene caracteres no ASCII: $RepoRoot" }
 
-    # Mezclar los añadidos manuales (config/gow.manual.toml) con el export de Ghidra,
-    # así un nuevo export no borra nada. Resultado: out/gow.effective.toml
-    $effective = $toml
-    if (Test-Path $ManualToml) {
-        $manual = [IO.File]::ReadAllText($ManualToml)
-        foreach ($pair in @(@('extra_stubs', 'stubs'), @('extra_entry_points', 'entry_points'))) {
-            $extraKey, $key = $pair
-            if ($manual -match "(?ms)^$extraKey\s*=\s*\[(.*?)^\]") {
-                $manual = $manual.Replace($Matches[0], '')
-                $entries = $Matches[1].Replace('$', '$$')   # '$' es especial en el reemplazo de -replace
-                if ($effective -match "(?m)^$key\s*=\s*\[") {
-                    $effective = $effective -replace "(?m)^$key\s*=\s*\[", "$key = [`n$entries"
-                }
-                else {
-                    $effective = $effective -replace '(?m)^\[general\][ \t]*\r?$', "[general]`n$key = [`n$entries]"
-                }
-            }
-        }
-        $effective = $effective.TrimEnd() + "`n`n# ---- Añadidos de config/gow.manual.toml ----`n" + $manual
-    }
+    $toml = [IO.File]::ReadAllText($TemplateToml)
+    $toml = $toml.Replace('@ELF@', (ConvertTo-ForwardSlash $elfPath)).
+                  Replace('@MAP@', (ConvertTo-ForwardSlash $FuncMapCsv)).
+                  Replace('@OUT@', (ConvertTo-ForwardSlash $GeneratedDir) + '/')
     New-Item -ItemType Directory -Force (Split-Path $EffectiveToml) | Out-Null
-    Write-Utf8NoBom $EffectiveToml $effective
+    Write-Utf8NoBom $EffectiveToml $toml
 
     if (Test-Path $GeneratedDir) { Remove-Item $GeneratedDir -Recurse -Force }
     New-Item -ItemType Directory -Force $GeneratedDir | Out-Null
@@ -68,6 +49,15 @@ if (-not $SyncOnly) {
     Push-Location $RepoRoot
     try { Invoke-Native $recomp @($EffectiveToml) }
     finally { Pop-Location }
+}
+
+# ── IOP nativo (opcional) ──────────────────────────────────────────────────
+$iopNativeDir = Join-Path $RecompDir 'ps2xIOP\src\native'
+Get-ChildItem $iopNativeDir -Filter 'iopn_*.cpp' -File -ErrorAction SilentlyContinue | Remove-Item -Force
+if ($env:GOW_IOP_MODULOS) {
+    if (-not (Test-Path (Join-Path $env:GOW_IOP_MODULOS 'modules.txt'))) { throw "GOW_IOP_MODULOS no tiene modules.txt: $env:GOW_IOP_MODULOS" }
+    Write-Host "IOP nativo desde $env:GOW_IOP_MODULOS"
+    Invoke-Native 'py' @('-3', '-I', (Join-Path $RepoRoot 'tools\iop\iopn_gen.py'), $env:GOW_IOP_MODULOS, $iopNativeDir)
 }
 
 # ── Sincronizar con el runner ──────────────────────────────────────────────
@@ -79,22 +69,29 @@ if (Test-Path $SyncManifest) {
 }
 New-Item -ItemType Directory -Force (Split-Path $SyncManifest) | Out-Null
 
+# El código generado incluye <ps2_recompiled_functions.h> desde src/runner, así que todo va ahí
 $copied = New-Object System.Collections.Generic.List[string]
-$sources = @(Get-ChildItem $GeneratedDir -File) + @(Get-ChildItem $OverridesDir -Filter *.cpp -File)
+$sources = @(Get-ChildItem $GeneratedDir -File) + @(Get-ChildItem $OverridesDir -File | Where-Object { $_.Extension -in '.cpp', '.h' })
 foreach ($file in $sources) {
-    $destDir = if ($file.Extension -eq '.h') { $RunnerIncDir } else { $RunnerSrcDir }
-    $dest = Join-Path $destDir $file.Name
+    $dest = Join-Path $RunnerSrcDir $file.Name
     Copy-Item $file.FullName $dest -Force
+    (Get-Item $dest).LastWriteTime = Get-Date   # que MSBuild no lo dé por compilado
     $copied.Add($dest)
 }
 Set-Content -Path $SyncManifest -Value $copied -Encoding utf8
-
 Write-Host "Copiados $($copied.Count) archivos al runner de PS2Recomp."
 
 # Reconfigurar CMake para que el proyecto del runner incluya los archivos nuevos. Si se deja
 # a la regeneración automática durante el build, MSBuild compila con el proyecto viejo y
 # el enlazado falla con miles de LNK2019.
+$cmakeArgs = @('-S', $RecompDir, '-B', $BuildDir, (Get-AggressiveLogsDefine $AggressiveLogs))
+$vu1Micro = if ($env:GOW_VU1_MICROCODIGO) { ConvertTo-ForwardSlash $env:GOW_VU1_MICROCODIGO } else { '' }
+if ($vu1Micro) { Write-Host "VU1 nativa desde $vu1Micro" }
+$cmakeArgs += "-DPS2X_VU1_MICROCODE_DIR=$vu1Micro"
+$cmakeArgs += "-DPS2X_VU1_GENERATOR_SOURCE=$(if ($vu1Micro) { ConvertTo-ForwardSlash (Join-Path $RepoRoot 'tools\vu1\generar_vu1.cpp') })"
+$cmakeArgs += "-DPS2X_VU1N_GEN_OVERRIDE=$(if ($vu1Micro) { ConvertTo-ForwardSlash (Join-Path $RepoRoot 'tools\vu1\vu1n_gen.py') })"
+$cmakeArgs += "-DPS2X_VU1N_HEADS_FILE=$(if ($vu1Micro) { ConvertTo-ForwardSlash (Join-Path $RepoRoot 'tools\vu1\vu1n_heads.txt') })"
 if (Test-Path (Join-Path $BuildDir 'CMakeCache.txt')) {
-    Invoke-Native (Get-CMake) @('-S', $RecompDir, '-B', $BuildDir, (Get-AggressiveLogsDefine $AggressiveLogs)) | Out-Null
+    Invoke-Native (Get-CMake) $cmakeArgs | Out-Null
 }
-Write-Host 'Siguiente paso: .\scripts\run.ps1'
+Write-Host 'Siguiente paso: .\scripts\run.ps1 -Config RelWithDebInfo'
